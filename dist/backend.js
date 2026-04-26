@@ -2,6 +2,17 @@
 // src/backend.ts
 var chatroomHistory = [];
 spindle.onFrontendMessage(async (payload) => {
+  if (payload.type === "user_message") {
+    chatroomHistory.push({ role: "user", content: `[User Message in Chatroom]: ${payload.content}` });
+    spindle.sendToFrontend({
+      type: "new_message",
+      name: "The User",
+      username: "User",
+      content: payload.content,
+      avatarUrl: null,
+      isUser: true
+    });
+  }
   if (payload.type === "trigger_generation") {
     if (!spindle.permissions.has("generation")) {
       spindle.sendToFrontend({ type: "error", message: "Generation permission not granted" });
@@ -69,7 +80,8 @@ MemberName (Username): The message content
           name: speakerName,
           username: username || speakerName,
           content,
-          avatarUrl
+          avatarUrl,
+          isUser: false
         });
       }
     } catch (e) {
