@@ -389,7 +389,28 @@ function setup(ctx) {
       h: shell.offsetHeight
     });
   }
+  function clampWidgetToViewport() {
+    if (isFullscreen)
+      return;
+    const pos = widget.getPosition();
+    const rect = shell.getBoundingClientRect();
+    let nx = pos.x;
+    let ny = pos.y;
+    const pad = 8;
+    if (nx < pad)
+      nx = pad;
+    if (nx + rect.width > window.innerWidth - pad)
+      nx = Math.max(pad, window.innerWidth - rect.width - pad);
+    if (ny < pad)
+      ny = pad;
+    if (ny + rect.height > window.innerHeight - pad)
+      ny = Math.max(pad, window.innerHeight - rect.height - pad);
+    if (nx !== pos.x || ny !== pos.y) {
+      widget.moveTo(nx, ny);
+    }
+  }
   widget.onDragEnd(() => {
+    clampWidgetToViewport();
     persistWidgetState();
   });
   ctx.dom.addStyle(`
@@ -441,6 +462,157 @@ function setup(ctx) {
   let unreadCount = 0;
   let lastSenderId = null;
   let userPersona = null;
+  let allMessages = [];
+  const msgHeightCache = new Map;
+  const ESTIMATED_MSG_HEIGHT = 60;
+  const VIRTUAL_OVERSCAN = 12;
+  let virtualRange = { start: 0, end: -1 };
+  let isStickToBottom = true;
+  function isGroupedAt(index) {
+    if (index <= 0)
+      return false;
+    const curr = allMessages[index];
+    const prev = allMessages[index - 1];
+    const currId = curr.isUser ? "__user__" : curr.name;
+    const prevId = prev.isUser ? "__user__" : prev.name;
+    return currId === prevId;
+  }
+  function createMessageElement(index) {
+    const msg = allMessages[index];
+    const isGrouped = isGroupedAt(index);
+    const isUser = msg.isUser;
+    const wrap = document.createElement("div");
+    wrap.className = "chatroom-msg";
+    wrap.style.cssText = `
+      display:flex;gap:10px;align-items:flex-start;max-width:85%;
+      ${isUser ? "align-self:flex-end;flex-direction:row-reverse;" : "align-self:flex-start;"}
+      ${isGrouped ? "margin-top:2px;" : "margin-top:12px;"}
+    `;
+    const avatarWrap = document.createElement("div");
+    avatarWrap.style.cssText = `flex-shrink:0;width:32px;height:32px;${isGrouped ? "visibility:hidden;" : ""}`;
+    if (msg.avatarUrl) {
+      avatarWrap.innerHTML = `<img src="${msg.avatarUrl}" style="width:32px;height:32px;border-radius:50%;object-fit:cover;">`;
+    } else {
+      const displayName = isUser ? userPersona?.name || "You" : msg.name;
+      const initial = displayName.charAt(0).toUpperCase();
+      const bg = isUser ? "var(--lumiverse-primary)" : memberColor(msg.name);
+      const fg = "white";
+      avatarWrap.innerHTML = `<div style="width:32px;height:32px;border-radius:50%;background:${bg};display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:${fg};">${initial}</div>`;
+    }
+    wrap.appendChild(avatarWrap);
+    const col = document.createElement("div");
+    col.style.cssText = `display:flex;flex-direction:column;gap:2px;min-width:0;${isUser ? "align-items:flex-end;" : "align-items:flex-start;"}`;
+    if (!isGrouped) {
+      const nameEl = document.createElement("div");
+      nameEl.style.cssText = "font-size:11px;font-weight:700;padding:0 6px;";
+      nameEl.style.color = isUser ? "var(--lumiverse-primary)" : memberColor(msg.name);
+      nameEl.textContent = isUser ? userPersona?.name || "You" : msg.username || msg.name;
+      col.appendChild(nameEl);
+    }
+    const bubble = document.createElement("div");
+    bubble.style.cssText = `
+      padding:10px 14px;border-radius:18px;font-size:13.5px;
+      line-height:1.45;word-break:break-word;
+      ${isUser ? "background:var(--lumiverse-primary);color:white;border-bottom-right-radius:4px;" : "background:var(--lumiverse-fill-subtle);color:var(--lumiverse-text);border-bottom-left-radius:4px;"}
+    `;
+    bubble.textContent = msg.content;
+    col.appendChild(bubble);
+    const timeEl = document.createElement("div");
+    timeEl.style.cssText = "font-size:10px;color:var(--lumiverse-text-dim);padding:0 6px;";
+    const ts = new Date(msg.timestamp);
+    timeEl.textContent = ts.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    col.appendChild(timeEl);
+    wrap.appendChild(col);
+    return wrap;
+  }
+  function syncVirtualWindow(shouldScrollToBottom = false) {
+    if (allMessages.length === 0) {
+      topSpacer.style.height = "0px";
+      bottomSpacer.style.height = "0px";
+      virtualContent.innerHTML = "";
+      virtualRange = { start: 0, end: -1 };
+      return;
+    }
+    const scrollTop = messageList.scrollTop;
+    const viewportHeight = messageList.clientHeight;
+    let accumulated = 0;
+    let startIdx = 0;
+    for (let i = 0;i < allMessages.length; i++) {
+      const h = msgHeightCache.get(i) || ESTIMATED_MSG_HEIGHT;
+      if (accumulated + h > scrollTop - VIRTUAL_OVERSCAN * ESTIMATED_MSG_HEIGHT) {
+        startIdx = i;
+        break;
+      }
+      accumulated += h;
+    }
+    let visibleH = 0;
+    let endIdx = startIdx;
+    for (let i = startIdx;i < allMessages.length; i++) {
+      const h = msgHeightCache.get(i) || ESTIMATED_MSG_HEIGHT;
+      visibleH += h;
+      endIdx = i;
+      if (visibleH > viewportHeight + VIRTUAL_OVERSCAN * ESTIMATED_MSG_HEIGHT)
+        break;
+    }
+    let topHeight = 0;
+    for (let i = 0;i < startIdx; i++) {
+      topHeight += msgHeightCache.get(i) || ESTIMATED_MSG_HEIGHT;
+    }
+    let bottomHeight = 0;
+    for (let i = endIdx + 1;i < allMessages.length; i++) {
+      bottomHeight += msgHeightCache.get(i) || ESTIMATED_MSG_HEIGHT;
+    }
+    topSpacer.style.height = topHeight + "px";
+    bottomSpacer.style.height = bottomHeight + "px";
+    const existing = new Map;
+    for (const child of Array.from(virtualContent.children)) {
+      const idx = parseInt(child.dataset.vindex || "-1", 10);
+      if (idx >= 0)
+        existing.set(idx, child);
+    }
+    for (const [idx, el] of existing) {
+      if (idx < startIdx || idx > endIdx) {
+        virtualContent.removeChild(el);
+      }
+    }
+    for (let i = startIdx;i <= endIdx; i++) {
+      if (!existing.has(i)) {
+        const el = createMessageElement(i);
+        el.dataset.vindex = String(i);
+        let inserted = false;
+        for (const child of Array.from(virtualContent.children)) {
+          const childIdx = parseInt(child.dataset.vindex || "999999", 10);
+          if (childIdx > i) {
+            virtualContent.insertBefore(el, child);
+            inserted = true;
+            break;
+          }
+        }
+        if (!inserted) {
+          virtualContent.appendChild(el);
+        }
+      }
+    }
+    for (const child of Array.from(virtualContent.children)) {
+      const idx = parseInt(child.dataset.vindex || "-1", 10);
+      if (idx >= startIdx && idx <= endIdx) {
+        msgHeightCache.set(idx, child.offsetHeight);
+      }
+    }
+    virtualRange = { start: startIdx, end: endIdx };
+    if (shouldScrollToBottom) {
+      messageList.scrollTo({ top: messageList.scrollHeight, behavior: "smooth" });
+    }
+  }
+  let scrollRaf = null;
+  messageList.addEventListener("scroll", () => {
+    isStickToBottom = messageList.scrollTop + messageList.clientHeight >= messageList.scrollHeight - 60;
+    if (scrollRaf)
+      cancelAnimationFrame(scrollRaf);
+    scrollRaf = requestAnimationFrame(() => {
+      syncVirtualWindow(false);
+    });
+  });
   function hashHue(str) {
     let h = 0;
     for (let i = 0;i < str.length; i++)
@@ -547,6 +719,8 @@ function setup(ctx) {
   header.addEventListener("mousedown", (e) => {
     if (e.target.closest("button"))
       return;
+    e.preventDefault();
+    e.stopPropagation();
     isDragging = true;
     header.style.cursor = "grabbing";
     const pos = widget.getPosition();
@@ -558,8 +732,12 @@ function setup(ctx) {
     widget.moveTo(dragStart.wx + (e.clientX - dragStart.x), dragStart.wy + (e.clientY - dragStart.y));
   });
   document.addEventListener("mouseup", () => {
+    if (!isDragging)
+      return;
     isDragging = false;
     header.style.cursor = "grab";
+    clampWidgetToViewport();
+    persistWidgetState();
   });
   const body = document.createElement("div");
   body.style.cssText = "flex:1;display:flex;flex-direction:column;overflow:hidden;min-height:0;";
@@ -585,6 +763,15 @@ function setup(ctx) {
     <span>Council is typing…</span>
   `;
   messageList.appendChild(loadingIndicator);
+  const topSpacer = document.createElement("div");
+  topSpacer.style.cssText = "flex-shrink:0;";
+  const virtualContent = document.createElement("div");
+  virtualContent.style.cssText = "display:flex;flex-direction:column;gap:2px;min-height:0;";
+  const bottomSpacer = document.createElement("div");
+  bottomSpacer.style.cssText = "flex-shrink:0;";
+  messageList.insertBefore(topSpacer, loadingIndicator);
+  messageList.insertBefore(virtualContent, loadingIndicator);
+  messageList.insertBefore(bottomSpacer, loadingIndicator);
   body.appendChild(messageList);
   const controls = document.createElement("div");
   controls.style.cssText = `
@@ -732,6 +919,7 @@ function setup(ctx) {
       badge.style.display = "none";
       unreadCount = 0;
     }
+    requestAnimationFrame(() => clampWidgetToViewport());
   }
   collapseBtn.addEventListener("click", () => {
     if (isFullscreen) {
@@ -791,20 +979,27 @@ function setup(ctx) {
   });
   hideBtn.addEventListener("click", () => widget.setVisible(false));
   window.addEventListener("resize", () => {
-    if (!isFullscreen && !isCollapsed) {
-      const pos = widget.getPosition();
-      const rect = shell.getBoundingClientRect();
-      let { x: nx, y: ny } = pos;
-      if (nx + rect.width > window.innerWidth)
-        nx = Math.max(0, window.innerWidth - rect.width - 16);
-      if (ny + rect.height > window.innerHeight)
-        ny = Math.max(0, window.innerHeight - rect.height - 16);
-      if (nx !== pos.x || ny !== pos.y)
-        widget.moveTo(nx, ny);
-    } else if (isFullscreen && !supportsNativeFullscreen) {
+    if (isFullscreen && !supportsNativeFullscreen) {
       shell.style.setProperty("width", window.innerWidth + "px", "important");
       shell.style.setProperty("height", window.innerHeight + "px", "important");
+      return;
     }
+    if (isFullscreen)
+      return;
+    const pos = widget.getPosition();
+    const rect = shell.getBoundingClientRect();
+    let { x: nx, y: ny } = pos;
+    const pad = 8;
+    if (nx < pad)
+      nx = pad;
+    if (nx + rect.width > window.innerWidth - pad)
+      nx = Math.max(pad, window.innerWidth - rect.width - pad);
+    if (ny < pad)
+      ny = pad;
+    if (ny + rect.height > window.innerHeight - pad)
+      ny = Math.max(pad, window.innerHeight - rect.height - pad);
+    if (nx !== pos.x || ny !== pos.y)
+      widget.moveTo(nx, ny);
   });
   autoToggle.addEventListener("change", () => {
     ctx.sendToBackend({ type: "set_auto_reply", enabled: autoToggle.checked });
@@ -839,53 +1034,17 @@ function setup(ctx) {
     ctx.sendToBackend({ type: "trigger_generation" });
   });
   function appendMessage(name, username, content, avatarUrl, isUser = false) {
-    const senderId = isUser ? "__user__" : name;
-    const isGrouped = senderId === lastSenderId;
-    lastSenderId = senderId;
-    const wrap = document.createElement("div");
-    wrap.className = "chatroom-msg";
-    wrap.style.cssText = `
-      display:flex;gap:10px;align-items:flex-start;max-width:85%;
-      ${isUser ? "align-self:flex-end;flex-direction:row-reverse;" : "align-self:flex-start;"}
-      ${isGrouped ? "margin-top:2px;" : "margin-top:12px;"}
-    `;
-    const avatarWrap = document.createElement("div");
-    avatarWrap.style.cssText = `flex-shrink:0;width:32px;height:32px;${isGrouped ? "visibility:hidden;" : ""}`;
-    if (avatarUrl) {
-      avatarWrap.innerHTML = `<img src="${avatarUrl}" style="width:32px;height:32px;border-radius:50%;object-fit:cover;">`;
-    } else {
-      const displayName = isUser ? userPersona?.name || "You" : name;
-      const initial = displayName.charAt(0).toUpperCase();
-      const bg = isUser ? "var(--lumiverse-primary)" : memberColor(name);
-      const fg = "white";
-      avatarWrap.innerHTML = `<div style="width:32px;height:32px;border-radius:50%;background:${bg};display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:${fg};">${initial}</div>`;
-    }
-    wrap.appendChild(avatarWrap);
-    const col = document.createElement("div");
-    col.style.cssText = `display:flex;flex-direction:column;gap:2px;min-width:0;${isUser ? "align-items:flex-end;" : "align-items:flex-start;"}`;
-    if (!isGrouped) {
-      const nameEl = document.createElement("div");
-      nameEl.style.cssText = "font-size:11px;font-weight:700;padding:0 6px;";
-      nameEl.style.color = isUser ? "var(--lumiverse-primary)" : memberColor(name);
-      nameEl.textContent = isUser ? userPersona?.name || "You" : username || name;
-      col.appendChild(nameEl);
-    }
-    const bubble = document.createElement("div");
-    bubble.style.cssText = `
-      padding:10px 14px;border-radius:18px;font-size:13.5px;
-      line-height:1.45;word-break:break-word;
-      ${isUser ? "background:var(--lumiverse-primary);color:white;border-bottom-right-radius:4px;" : "background:var(--lumiverse-fill-subtle);color:var(--lumiverse-text);border-bottom-left-radius:4px;"}
-    `;
-    bubble.textContent = content;
-    col.appendChild(bubble);
-    const timeEl = document.createElement("div");
-    timeEl.style.cssText = "font-size:10px;color:var(--lumiverse-text-dim);padding:0 6px;";
-    const now = new Date;
-    timeEl.textContent = now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-    col.appendChild(timeEl);
-    wrap.appendChild(col);
-    messageList.insertBefore(wrap, loadingIndicator);
-    messageList.scrollTo({ top: messageList.scrollHeight, behavior: "smooth" });
+    allMessages.push({
+      name,
+      username,
+      content,
+      avatarUrl,
+      isUser,
+      timestamp: Date.now()
+    });
+    lastSenderId = isUser ? "__user__" : name;
+    const shouldScroll = isStickToBottom;
+    syncVirtualWindow(shouldScroll);
     if (isCollapsed) {
       unreadCount++;
       badge.textContent = unreadCount > 99 ? "99+" : String(unreadCount);
@@ -893,16 +1052,29 @@ function setup(ctx) {
     }
   }
   function clearMessages() {
-    messageList.innerHTML = "";
-    messageList.appendChild(loadingIndicator);
+    allMessages = [];
+    msgHeightCache.clear();
     lastSenderId = null;
     unreadCount = 0;
+    syncVirtualWindow(false);
   }
   function loadHistory(history) {
-    clearMessages();
+    allMessages = [];
+    msgHeightCache.clear();
     for (const msg of history) {
-      appendMessage(msg.name, msg.username, msg.content, msg.avatarUrl, msg.isUser);
+      allMessages.push({
+        name: msg.name,
+        username: msg.username,
+        content: msg.content,
+        avatarUrl: msg.avatarUrl,
+        isUser: msg.isUser,
+        timestamp: msg.timestamp || Date.now()
+      });
     }
+    lastSenderId = allMessages.length > 0 ? allMessages[allMessages.length - 1].isUser ? "__user__" : allMessages[allMessages.length - 1].name : null;
+    isStickToBottom = true;
+    messageList.scrollTop = 99999999;
+    syncVirtualWindow(false);
   }
   const unsubBackend = ctx.onBackendMessage((payload) => {
     if (payload.type === "settings_loaded") {
