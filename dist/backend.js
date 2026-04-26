@@ -3,6 +3,8 @@ var chatroomHistory = [];
 var uiMessages = [];
 spindle.onFrontendMessage(async (payload, userId) => {
   if (payload.type === "save_settings") {
+    await spindle.variables.global.set("chatroom_message_interval", (payload.messageInterval ?? 10).toString(), userId);
+    await spindle.variables.global.set("chatroom_random_interval_enabled", (payload.randomIntervalEnabled ?? true).toString(), userId);
     await spindle.variables.global.set("chatroom_interval_min", payload.intervalMin.toString(), userId);
     await spindle.variables.global.set("chatroom_interval_max", payload.intervalMax.toString(), userId);
     await spindle.variables.global.set("chatroom_context_limit", payload.contextLimit.toString(), userId);
@@ -11,6 +13,8 @@ spindle.onFrontendMessage(async (payload, userId) => {
     return;
   }
   if (payload.type === "load_settings") {
+    const msgInterval = await spindle.variables.global.get("chatroom_message_interval", userId);
+    const randomEnabled = await spindle.variables.global.get("chatroom_random_interval_enabled", userId);
     const min = await spindle.variables.global.get("chatroom_interval_min", userId);
     const max = await spindle.variables.global.get("chatroom_interval_max", userId);
     const ctxLimit = await spindle.variables.global.get("chatroom_context_limit", userId);
@@ -37,6 +41,8 @@ spindle.onFrontendMessage(async (payload, userId) => {
     }
     spindle.sendToFrontend({
       type: "settings_loaded",
+      messageInterval: msgInterval ? parseInt(msgInterval, 10) : 10,
+      randomIntervalEnabled: randomEnabled ? randomEnabled === "true" : true,
       intervalMin: min ? parseInt(min, 10) : 5,
       intervalMax: max ? parseInt(max, 10) : 15,
       contextLimit: ctxLimit ? parseInt(ctxLimit, 10) : 10,

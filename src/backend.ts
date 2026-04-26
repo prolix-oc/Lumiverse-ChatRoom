@@ -7,16 +7,20 @@ const uiMessages: { name: string, username: string, content: string, avatarUrl: 
 
 spindle.onFrontendMessage(async (payload, userId) => {
   if (payload.type === 'save_settings') {
+    await spindle.variables.global.set('chatroom_message_interval', (payload.messageInterval ?? 10).toString(), userId);
+    await spindle.variables.global.set('chatroom_random_interval_enabled', (payload.randomIntervalEnabled ?? true).toString(), userId);
     await spindle.variables.global.set('chatroom_interval_min', payload.intervalMin.toString(), userId);
     await spindle.variables.global.set('chatroom_interval_max', payload.intervalMax.toString(), userId);
     await spindle.variables.global.set('chatroom_context_limit', payload.contextLimit.toString(), userId);
     await spindle.variables.global.set('chatroom_connection_id', payload.connectionId || '', userId);
-    
+
     spindle.toast.success('Chatroom configuration saved.', { userId });
     return;
   }
 
   if (payload.type === 'load_settings') {
+    const msgInterval = await spindle.variables.global.get('chatroom_message_interval', userId);
+    const randomEnabled = await spindle.variables.global.get('chatroom_random_interval_enabled', userId);
     const min = await spindle.variables.global.get('chatroom_interval_min', userId);
     const max = await spindle.variables.global.get('chatroom_interval_max', userId);
     const ctxLimit = await spindle.variables.global.get('chatroom_context_limit', userId);
@@ -47,6 +51,8 @@ spindle.onFrontendMessage(async (payload, userId) => {
 
     spindle.sendToFrontend({
       type: 'settings_loaded',
+      messageInterval: msgInterval ? parseInt(msgInterval, 10) : 10,
+      randomIntervalEnabled: randomEnabled ? randomEnabled === 'true' : true,
       intervalMin: min ? parseInt(min, 10) : 5,
       intervalMax: max ? parseInt(max, 10) : 15,
       contextLimit: ctxLimit ? parseInt(ctxLimit, 10) : 10,
@@ -92,7 +98,7 @@ spindle.onFrontendMessage(async (payload, userId) => {
 
     payload.type = 'trigger_generation';
   }
-  
+
   if (payload.type === 'trigger_generation') {
     spindle.log.info('Starting generation trigger processing');
     if (!spindle.permissions.has('generation')) {
@@ -115,7 +121,7 @@ spindle.onFrontendMessage(async (payload, userId) => {
       // Get recent messages based on configured limit
       const ctxLimitStr = await spindle.variables.global.get('chatroom_context_limit', userId);
       const contextLimit = ctxLimitStr ? parseInt(ctxLimitStr, 10) : 10;
-      
+
       const messages = await spindle.chat.getMessages(activeChat.id);
       const recentMessages = messages.slice(-contextLimit);
       const chatContext = recentMessages.map(m => `${m.name || m.role}: ${m.content}`).join('\\n');
@@ -162,7 +168,7 @@ MemberName (Username): The message content
 
       spindle.log.info('Resolving connection profile...');
       const connId = await spindle.variables.global.get('chatroom_connection_id', userId);
-      
+
       let conn: any = null;
       if (connId) {
         conn = await spindle.connections.get(connId, userId);
@@ -198,12 +204,12 @@ MemberName (Username): The message content
           fullText = chunk.content || fullText;
         }
       }
-      
+
       spindle.log.info('Generation stream completed. Processing results...');
-      
+
       // Store the generated response in history so they have continuity
       chatroomHistory.push({ role: 'assistant', content: fullText });
-      
+
       const chunks = fullText.split('---');
 
       for (const chunk of chunks) {
@@ -211,7 +217,7 @@ MemberName (Username): The message content
 
         // Parse "Name (Username): message" or fallback to "Name: message"
         const match = chunk.trim().match(/^([^:(]+)(?:\s*\(([^)]+)\))?:\s*(.*)$/s);
-        
+
         let speakerName = 'Unknown';
         let username = '';
         let content = chunk.trim();
@@ -239,7 +245,7 @@ MemberName (Username): The message content
           ...uiMsg
         }, userId);
       }
-      
+
       spindle.log.info('Successfully dispatched messages to frontend.');
       spindle.sendToFrontend({ type: 'generation_ended' }, userId);
 

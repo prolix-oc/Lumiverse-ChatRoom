@@ -7,25 +7,6 @@ function setup(ctx) {
     description: "Configure the Council Chatroom overlay",
     iconSvg: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>`
   });
-  const settingsContainer = document.createElement("div");
-  settingsContainer.style.padding = "16px";
-  settingsContainer.style.color = "var(--lumiverse-text)";
-  settingsContainer.style.display = "flex";
-  settingsContainer.style.flexDirection = "column";
-  settingsContainer.style.gap = "20px";
-  const titleEl = document.createElement("h3");
-  titleEl.textContent = "Council Chatroom Overlay";
-  titleEl.style.marginTop = "0";
-  titleEl.style.marginBottom = "0px";
-  titleEl.style.fontSize = "16px";
-  settingsContainer.appendChild(titleEl);
-  const descEl = document.createElement("p");
-  descEl.textContent = "The Council Chatroom overlay appears automatically. You can toggle the floating widget visibility here or use the controls below.";
-  descEl.style.fontSize = "13px";
-  descEl.style.color = "var(--lumiverse-text-muted)";
-  descEl.style.margin = "0";
-  descEl.style.lineHeight = "1.4";
-  settingsContainer.appendChild(descEl);
   function makeInteractive(el) {
     const stop = (e) => e.stopPropagation();
     el.addEventListener("mousedown", stop, false);
@@ -34,141 +15,261 @@ function setup(ctx) {
     el.addEventListener("click", stop, false);
     el.addEventListener("keydown", stop, false);
   }
+  const settingsContainer = document.createElement("div");
+  settingsContainer.style.cssText = `
+    padding: 20px;
+    color: var(--lumiverse-text);
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    max-width: 520px;
+    font-family: var(--lumiverse-font-family, system-ui, -apple-system, sans-serif);
+  `;
+  const headerSection = document.createElement("div");
+  headerSection.style.cssText = `
+    display: flex; flex-direction: column; gap: 4px;
+  `;
+  const titleEl = document.createElement("h3");
+  titleEl.textContent = "Council Chatroom Overlay";
+  titleEl.style.cssText = `
+    margin: 0; font-size: 18px; font-weight: 700;
+    color: var(--lumiverse-text); letter-spacing: -0.01em;
+  `;
+  const descEl = document.createElement("p");
+  descEl.textContent = "Configure how your council members react to the story. Toggle the floating widget below or use the controls in the chatroom itself.";
+  descEl.style.cssText = `
+    margin: 0; font-size: 13px; color: var(--lumiverse-text-muted);
+    line-height: 1.5;
+  `;
+  headerSection.appendChild(titleEl);
+  headerSection.appendChild(descEl);
+  settingsContainer.appendChild(headerSection);
+  const toggleCard = document.createElement("div");
+  toggleCard.style.cssText = `
+    background: var(--lumiverse-fill-subtle);
+    border: 1px solid var(--lumiverse-border);
+    border-radius: var(--lumiverse-radius, 10px);
+    padding: 16px;
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  `;
+  const toggleInfo = document.createElement("div");
+  toggleInfo.style.cssText = "display: flex; flex-direction: column; gap: 2px;";
+  const toggleLabel = document.createElement("span");
+  toggleLabel.textContent = "Floating Widget";
+  toggleLabel.style.cssText = "font-size: 14px; font-weight: 600; color: var(--lumiverse-text);";
+  const toggleHint = document.createElement("span");
+  toggleHint.textContent = "Show or hide the chatroom overlay";
+  toggleHint.style.cssText = "font-size: 12px; color: var(--lumiverse-text-muted);";
+  toggleInfo.appendChild(toggleLabel);
+  toggleInfo.appendChild(toggleHint);
   const toggleBtn = document.createElement("button");
   makeInteractive(toggleBtn);
-  toggleBtn.textContent = "Toggle Overlay Visibility";
-  toggleBtn.style.padding = "8px 12px";
-  toggleBtn.style.background = "var(--lumiverse-fill-subtle)";
-  toggleBtn.style.color = "var(--lumiverse-text)";
-  toggleBtn.style.border = "1px solid var(--lumiverse-border)";
-  toggleBtn.style.borderRadius = "var(--lumiverse-radius)";
-  toggleBtn.style.cursor = "pointer";
-  toggleBtn.style.fontSize = "13px";
+  toggleBtn.textContent = "Toggle Visibility";
+  toggleBtn.style.cssText = `
+    padding: 8px 14px;
+    background: var(--lumiverse-fill);
+    color: var(--lumiverse-text);
+    border: 1px solid var(--lumiverse-border);
+    border-radius: var(--lumiverse-radius, 8px);
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 500;
+    transition: background .15s, border-color .15s;
+    flex-shrink: 0;
+  `;
+  toggleBtn.addEventListener("mouseenter", () => {
+    toggleBtn.style.background = "var(--lumiverse-fill-hover)";
+    toggleBtn.style.borderColor = "var(--lumiverse-border-hover)";
+  });
+  toggleBtn.addEventListener("mouseleave", () => {
+    toggleBtn.style.background = "var(--lumiverse-fill)";
+    toggleBtn.style.borderColor = "var(--lumiverse-border)";
+  });
   toggleBtn.addEventListener("click", () => {
     widget.setVisible(!widget.isVisible());
   });
-  settingsContainer.appendChild(toggleBtn);
-  const configSection = document.createElement("div");
-  configSection.style.display = "flex";
-  configSection.style.flexDirection = "column";
-  configSection.style.gap = "12px";
-  configSection.style.borderTop = "1px solid var(--lumiverse-border)";
-  configSection.style.paddingTop = "16px";
+  toggleCard.appendChild(toggleInfo);
+  toggleCard.appendChild(toggleBtn);
+  settingsContainer.appendChild(toggleCard);
+  const configCard = document.createElement("div");
+  configCard.style.cssText = `
+    background: var(--lumiverse-bg-elevated, var(--lumiverse-fill-subtle));
+    border: 1px solid var(--lumiverse-border);
+    border-radius: var(--lumiverse-radius, 10px);
+    padding: 20px;
+    display: flex; flex-direction: column; gap: 16px;
+  `;
+  const configHeader = document.createElement("div");
+  configHeader.style.cssText = `
+    display: flex; align-items: center; gap: 8px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--lumiverse-border);
+  `;
+  const configHeaderIcon = document.createElement("span");
+  configHeaderIcon.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.67 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`;
+  configHeaderIcon.style.cssText = "color: var(--lumiverse-primary); display: flex; flex-shrink: 0;";
   const configTitle = document.createElement("h4");
   configTitle.textContent = "Chatroom Configuration";
-  configTitle.style.margin = "0";
-  configTitle.style.fontSize = "14px";
-  configSection.appendChild(configTitle);
-  const connectionRow = document.createElement("div");
-  connectionRow.style.display = "flex";
-  connectionRow.style.flexDirection = "column";
-  connectionRow.style.gap = "4px";
-  const connectionLabel = document.createElement("label");
-  connectionLabel.textContent = "Generation Connection Profile";
-  connectionLabel.style.fontSize = "13px";
-  connectionLabel.style.fontWeight = "500";
-  connectionRow.appendChild(connectionLabel);
-  const connectionSelect = document.createElement("select");
-  makeInteractive(connectionSelect);
-  connectionSelect.style.padding = "6px";
-  connectionSelect.style.border = "1px solid var(--lumiverse-border)";
-  connectionSelect.style.borderRadius = "var(--lumiverse-radius)";
-  connectionSelect.style.background = "var(--lumiverse-fill)";
-  connectionSelect.style.color = "var(--lumiverse-text)";
-  connectionSelect.style.fontSize = "13px";
-  connectionSelect.style.outline = "none";
-  connectionRow.appendChild(connectionSelect);
-  configSection.appendChild(connectionRow);
-  const intervalRow = document.createElement("div");
-  intervalRow.style.display = "flex";
-  intervalRow.style.flexDirection = "column";
-  intervalRow.style.gap = "4px";
-  const intervalLabel = document.createElement("label");
-  intervalLabel.textContent = "Auto-reply Interval Range (seconds)";
-  intervalLabel.style.fontSize = "13px";
-  intervalLabel.style.fontWeight = "500";
-  intervalRow.appendChild(intervalLabel);
-  const intervalInputs = document.createElement("div");
-  intervalInputs.style.display = "flex";
-  intervalInputs.style.gap = "8px";
-  intervalInputs.style.alignItems = "center";
-  const intervalMinInput = document.createElement("input");
-  makeInteractive(intervalMinInput);
-  intervalMinInput.type = "number";
-  intervalMinInput.min = "1";
-  intervalMinInput.max = "60";
-  intervalMinInput.value = "5";
-  intervalMinInput.style.width = "60px";
-  intervalMinInput.style.padding = "6px";
-  intervalMinInput.style.border = "1px solid var(--lumiverse-border)";
-  intervalMinInput.style.borderRadius = "var(--lumiverse-radius)";
-  intervalMinInput.style.background = "var(--lumiverse-fill)";
-  intervalMinInput.style.color = "var(--lumiverse-text)";
-  const intervalMaxInput = document.createElement("input");
-  makeInteractive(intervalMaxInput);
-  intervalMaxInput.type = "number";
-  intervalMaxInput.min = "1";
-  intervalMaxInput.max = "120";
-  intervalMaxInput.value = "15";
-  intervalMaxInput.style.width = "60px";
-  intervalMaxInput.style.padding = "6px";
-  intervalMaxInput.style.border = "1px solid var(--lumiverse-border)";
-  intervalMaxInput.style.borderRadius = "var(--lumiverse-radius)";
-  intervalMaxInput.style.background = "var(--lumiverse-fill)";
-  intervalMaxInput.style.color = "var(--lumiverse-text)";
-  intervalInputs.appendChild(intervalMinInput);
-  intervalInputs.appendChild(document.createTextNode("to"));
-  intervalInputs.appendChild(intervalMaxInput);
-  intervalRow.appendChild(intervalInputs);
-  configSection.appendChild(intervalRow);
-  const contextRow = document.createElement("div");
-  contextRow.style.display = "flex";
-  contextRow.style.flexDirection = "column";
-  contextRow.style.gap = "4px";
-  const contextLabel = document.createElement("label");
-  contextLabel.textContent = "Context Retrieval (number of messages)";
-  contextLabel.style.fontSize = "13px";
-  contextLabel.style.fontWeight = "500";
-  contextRow.appendChild(contextLabel);
-  const contextInput = document.createElement("input");
-  makeInteractive(contextInput);
-  contextInput.type = "number";
-  contextInput.min = "1";
-  contextInput.max = "50";
-  contextInput.value = "10";
-  contextInput.style.width = "80px";
-  contextInput.style.padding = "6px";
-  contextInput.style.border = "1px solid var(--lumiverse-border)";
-  contextInput.style.borderRadius = "var(--lumiverse-radius)";
-  contextInput.style.background = "var(--lumiverse-fill)";
-  contextInput.style.color = "var(--lumiverse-text)";
-  contextRow.appendChild(contextInput);
-  configSection.appendChild(contextRow);
+  configTitle.style.cssText = "margin: 0; font-size: 15px; font-weight: 700; color: var(--lumiverse-text);";
+  configHeader.appendChild(configHeaderIcon);
+  configHeader.appendChild(configTitle);
+  configCard.appendChild(configHeader);
+  function createSettingRow(labelText, description, control) {
+    const row = document.createElement("div");
+    row.style.cssText = "display: flex; flex-direction: column; gap: 6px;";
+    const labelWrap = document.createElement("div");
+    labelWrap.style.cssText = "display: flex; flex-direction: column; gap: 2px;";
+    const label = document.createElement("label");
+    label.textContent = labelText;
+    label.style.cssText = "font-size: 13px; font-weight: 600; color: var(--lumiverse-text);";
+    const desc = document.createElement("span");
+    desc.textContent = description;
+    desc.style.cssText = "font-size: 12px; color: var(--lumiverse-text-muted); line-height: 1.4;";
+    labelWrap.appendChild(label);
+    labelWrap.appendChild(desc);
+    control.style.alignSelf = "flex-start";
+    row.appendChild(labelWrap);
+    row.appendChild(control);
+    return row;
+  }
+  function createStyledSelect() {
+    const sel = document.createElement("select");
+    makeInteractive(sel);
+    sel.style.cssText = `
+      padding: 8px 10px;
+      border: 1px solid var(--lumiverse-border);
+      border-radius: var(--lumiverse-radius, 8px);
+      background: var(--lumiverse-fill);
+      color: var(--lumiverse-text);
+      font-size: 13px;
+      outline: none;
+      min-width: 240px;
+      cursor: pointer;
+      transition: border-color .15s, box-shadow .15s;
+    `;
+    sel.addEventListener("focus", () => {
+      sel.style.borderColor = "var(--lumiverse-primary)";
+      sel.style.boxShadow = "0 0 0 3px var(--lumiverse-primary-010, rgba(139,92,246,0.15))";
+    });
+    sel.addEventListener("blur", () => {
+      sel.style.borderColor = "var(--lumiverse-border)";
+      sel.style.boxShadow = "none";
+    });
+    return sel;
+  }
+  function createStyledNumberInput(min, max, value) {
+    const inp = document.createElement("input");
+    makeInteractive(inp);
+    inp.type = "number";
+    inp.min = min;
+    inp.max = max;
+    inp.value = value;
+    inp.style.cssText = `
+      width: 80px;
+      padding: 8px 10px;
+      border: 1px solid var(--lumiverse-border);
+      border-radius: var(--lumiverse-radius, 8px);
+      background: var(--lumiverse-fill);
+      color: var(--lumiverse-text);
+      font-size: 13px;
+      outline: none;
+      transition: border-color .15s, box-shadow .15s;
+    `;
+    inp.addEventListener("focus", () => {
+      inp.style.borderColor = "var(--lumiverse-primary)";
+      inp.style.boxShadow = "0 0 0 3px var(--lumiverse-primary-010, rgba(139,92,246,0.15))";
+    });
+    inp.addEventListener("blur", () => {
+      inp.style.borderColor = "var(--lumiverse-border)";
+      inp.style.boxShadow = "none";
+    });
+    return inp;
+  }
+  const connectionSelect = createStyledSelect();
+  connectionSelect.innerHTML = '<option value="">Default Active Connection</option>';
+  configCard.appendChild(createSettingRow("Generation Connection Profile", "The LLM connection used to generate council messages.", connectionSelect));
+  const messageIntervalInput = createStyledNumberInput("1", "3600", "10");
+  configCard.appendChild(createSettingRow("Time Between Messages (seconds)", "How long to wait before generating the next council message.", messageIntervalInput));
+  const randomToggleRow = document.createElement("div");
+  randomToggleRow.style.cssText = "display: flex; align-items: center; gap: 10px; cursor: pointer; user-select: none; padding: 4px 0;";
+  const randomToggleCheckbox = document.createElement("input");
+  randomToggleCheckbox.type = "checkbox";
+  randomToggleCheckbox.style.cssText = "width: 18px; height: 18px; cursor: pointer; accent-color: var(--lumiverse-primary); flex-shrink: 0;";
+  const randomToggleLabel = document.createElement("span");
+  randomToggleLabel.textContent = "Use Random Message Interval";
+  randomToggleLabel.style.cssText = "font-size: 13px; font-weight: 500; color: var(--lumiverse-text);";
+  randomToggleRow.appendChild(randomToggleCheckbox);
+  randomToggleRow.appendChild(randomToggleLabel);
+  makeInteractive(randomToggleCheckbox);
+  configCard.appendChild(createSettingRow("Random Interval", "When enabled, the delay between messages varies randomly within the range below. When disabled, the fixed time above is used exactly.", randomToggleRow));
+  const intervalRangeWrap = document.createElement("div");
+  intervalRangeWrap.style.cssText = "display: flex; gap: 12px; align-items: center;";
+  const intervalMinInput = createStyledNumberInput("1", "60", "5");
+  const intervalMaxInput = createStyledNumberInput("1", "120", "15");
+  const minWrap = document.createElement("div");
+  minWrap.style.cssText = "display: flex; flex-direction: column; gap: 4px;";
+  const minLabel = document.createElement("span");
+  minLabel.textContent = "Min (s)";
+  minLabel.style.cssText = "font-size: 11px; font-weight: 600; color: var(--lumiverse-text-muted); text-transform: uppercase; letter-spacing: 0.03em;";
+  minWrap.appendChild(minLabel);
+  minWrap.appendChild(intervalMinInput);
+  const maxWrap = document.createElement("div");
+  maxWrap.style.cssText = "display: flex; flex-direction: column; gap: 4px;";
+  const maxLabel = document.createElement("span");
+  maxLabel.textContent = "Max (s)";
+  maxLabel.style.cssText = "font-size: 11px; font-weight: 600; color: var(--lumiverse-text-muted); text-transform: uppercase; letter-spacing: 0.03em;";
+  maxWrap.appendChild(maxLabel);
+  maxWrap.appendChild(intervalMaxInput);
+  const rangeArrow = document.createElement("span");
+  rangeArrow.textContent = "→";
+  rangeArrow.style.cssText = "color: var(--lumiverse-text-muted); font-size: 13px; padding-top: 16px;";
+  intervalRangeWrap.appendChild(minWrap);
+  intervalRangeWrap.appendChild(rangeArrow);
+  intervalRangeWrap.appendChild(maxWrap);
+  const rangeRow = createSettingRow("Random Interval Range", "Council messages will be spaced by a random duration between these two values.", intervalRangeWrap);
+  configCard.appendChild(rangeRow);
+  function updateRangeVisibility() {
+    rangeRow.style.display = randomToggleCheckbox.checked ? "flex" : "none";
+    messageIntervalInput.disabled = randomToggleCheckbox.checked;
+    messageIntervalInput.style.opacity = randomToggleCheckbox.checked ? "0.5" : "1";
+  }
+  randomToggleCheckbox.addEventListener("change", updateRangeVisibility);
+  const contextInput = createStyledNumberInput("1", "50", "10");
+  configCard.appendChild(createSettingRow("Context Retrieval (messages)", "How many recent story messages the council can see before reacting.", contextInput));
+  const saveBtnWrap = document.createElement("div");
+  saveBtnWrap.style.cssText = "display: flex; gap: 10px; padding-top: 4px;";
   const saveBtn = document.createElement("button");
   makeInteractive(saveBtn);
   saveBtn.textContent = "Save Configuration";
-  saveBtn.style.padding = "8px 12px";
-  saveBtn.style.background = "var(--lumiverse-primary)";
-  saveBtn.style.color = "white";
-  saveBtn.style.border = "none";
-  saveBtn.style.borderRadius = "var(--lumiverse-radius)";
-  saveBtn.style.cursor = "pointer";
-  saveBtn.style.fontSize = "13px";
-  saveBtn.style.fontWeight = "500";
-  saveBtn.style.alignSelf = "flex-start";
-  saveBtn.style.marginTop = "8px";
+  saveBtn.style.cssText = `
+    padding: 10px 18px;
+    background: var(--lumiverse-primary);
+    color: white;
+    border: none;
+    border-radius: var(--lumiverse-radius, 8px);
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    transition: filter .15s, transform .1s;
+  `;
+  saveBtn.addEventListener("mouseenter", () => saveBtn.style.filter = "brightness(1.1)");
+  saveBtn.addEventListener("mouseleave", () => saveBtn.style.filter = "none");
+  saveBtn.addEventListener("mousedown", () => saveBtn.style.transform = "scale(0.97)");
+  saveBtn.addEventListener("mouseup", () => saveBtn.style.transform = "none");
   saveBtn.addEventListener("click", () => {
     ctx.sendToBackend({
       type: "save_settings",
+      messageInterval: parseInt(messageIntervalInput.value, 10),
+      randomIntervalEnabled: randomToggleCheckbox.checked,
       intervalMin: parseInt(intervalMinInput.value, 10),
       intervalMax: parseInt(intervalMaxInput.value, 10),
       contextLimit: parseInt(contextInput.value, 10),
       connectionId: connectionSelect.value
     });
-    ctx.dom.addStyle("");
   });
-  configSection.appendChild(saveBtn);
-  settingsContainer.appendChild(configSection);
+  saveBtnWrap.appendChild(saveBtn);
+  configCard.appendChild(saveBtnWrap);
+  settingsContainer.appendChild(configCard);
   tab.root.appendChild(settingsContainer);
   const isMobile = window.innerWidth <= 768 || "ontouchstart" in window;
   const widget = ctx.ui.createFloatWidget({
@@ -191,6 +292,8 @@ function setup(ctx) {
     .chatroom-msg { animation: msgIn .2s ease-out; }
   `);
   let autoTimer = null;
+  let messageInterval = 10;
+  let randomIntervalEnabled = true;
   let intervalMin = 5;
   let intervalMax = 15;
   let isGenerating = false;
@@ -501,26 +604,32 @@ function setup(ctx) {
   fsBtn.addEventListener("click", () => {
     if (isFullscreen) {
       isFullscreen = false;
-      const props = ["position", "left", "top", "right", "bottom", "margin", "transform", "width", "height", "max-width", "max-height", "min-width", "min-height"];
+      const props = ["position", "left", "top", "right", "bottom", "margin", "transform"];
       props.forEach((p) => hostWrapper.style.removeProperty(p));
       if (preFullscreenState) {
         widget.moveTo(preFullscreenState.x, preFullscreenState.y);
+        shell.style.setProperty("width", preFullscreenState.w + "px", "important");
+        shell.style.setProperty("height", preFullscreenState.h + "px", "important");
       }
+      shell.style.removeProperty("border-radius");
       updateCollapse();
       fsBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>`;
       fsBtn.title = "Fullscreen";
     } else {
-      preFullscreenState = { w: hostWrapper.offsetWidth, h: hostWrapper.offsetHeight, x: widget.getPosition().x, y: widget.getPosition().y };
+      preFullscreenState = { w: shell.offsetWidth, h: shell.offsetHeight, x: widget.getPosition().x, y: widget.getPosition().y };
       isFullscreen = true;
       isCollapsed = false;
-      const pad = isMobile ? 4 : 24;
+      widget.moveTo(0, 0);
+      shell.style.setProperty("width", window.innerWidth + "px", "important");
+      shell.style.setProperty("height", window.innerHeight + "px", "important");
+      shell.style.setProperty("border-radius", "0", "important");
       hostWrapper.style.setProperty("position", "fixed", "important");
-      hostWrapper.style.setProperty("left", pad + "px", "important");
-      hostWrapper.style.setProperty("top", pad + "px", "important");
-      hostWrapper.style.setProperty("right", pad + "px", "important");
-      hostWrapper.style.setProperty("bottom", pad + "px", "important");
-      hostWrapper.style.setProperty("width", "auto", "important");
-      hostWrapper.style.setProperty("height", "auto", "important");
+      hostWrapper.style.setProperty("left", "0", "important");
+      hostWrapper.style.setProperty("top", "0", "important");
+      hostWrapper.style.setProperty("right", "auto", "important");
+      hostWrapper.style.setProperty("bottom", "auto", "important");
+      hostWrapper.style.setProperty("width", "100vw", "important");
+      hostWrapper.style.setProperty("height", "100vh", "important");
       hostWrapper.style.setProperty("margin", "0", "important");
       hostWrapper.style.setProperty("transform", "none", "important");
       fsBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3"/></svg>`;
@@ -539,12 +648,20 @@ function setup(ctx) {
         ny = Math.max(0, window.innerHeight - rect.height - 16);
       if (nx !== pos.x || ny !== pos.y)
         widget.moveTo(nx, ny);
+    } else if (isFullscreen) {
+      shell.style.setProperty("width", window.innerWidth + "px", "important");
+      shell.style.setProperty("height", window.innerHeight + "px", "important");
     }
   });
   autoToggle.addEventListener("change", () => {
     if (autoToggle.checked) {
       const scheduleNext = () => {
-        const ms = intervalMin * 1000 + Math.random() * ((intervalMax - intervalMin) * 1000);
+        let ms;
+        if (randomIntervalEnabled) {
+          ms = intervalMin * 1000 + Math.random() * ((intervalMax - intervalMin) * 1000);
+        } else {
+          ms = messageInterval * 1000;
+        }
         autoTimer = setTimeout(() => {
           if (!isGenerating)
             ctx.sendToBackend({ type: "trigger_generation" });
@@ -635,11 +752,16 @@ function setup(ctx) {
   }
   const unsubBackend = ctx.onBackendMessage((payload) => {
     if (payload.type === "settings_loaded") {
-      intervalMinInput.value = payload.intervalMin.toString();
-      intervalMaxInput.value = payload.intervalMax.toString();
-      contextInput.value = payload.contextLimit.toString();
-      intervalMin = payload.intervalMin;
-      intervalMax = payload.intervalMax;
+      messageIntervalInput.value = (payload.messageInterval ?? 10).toString();
+      randomToggleCheckbox.checked = payload.randomIntervalEnabled ?? true;
+      intervalMinInput.value = (payload.intervalMin ?? 5).toString();
+      intervalMaxInput.value = (payload.intervalMax ?? 15).toString();
+      contextInput.value = (payload.contextLimit ?? 10).toString();
+      messageInterval = payload.messageInterval ?? 10;
+      randomIntervalEnabled = payload.randomIntervalEnabled ?? true;
+      intervalMin = payload.intervalMin ?? 5;
+      intervalMax = payload.intervalMax ?? 15;
+      updateRangeVisibility();
       if (payload.userPersona) {
         userPersona = payload.userPersona;
       }
