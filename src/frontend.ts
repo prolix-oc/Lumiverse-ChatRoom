@@ -458,6 +458,7 @@ export function setup(ctx: SpindleFrontendContext) {
 
   // ── Resize handle ──
   const resizeHandle = document.createElement('div');
+  resizeHandle.className = 'chatroom-resize';
   resizeHandle.style.cssText = `
     position:absolute;right:0;bottom:0;width:20px;height:20px;
     cursor:nwse-resize;z-index:10;
@@ -471,20 +472,22 @@ export function setup(ctx: SpindleFrontendContext) {
   let isResizing = false;
   let resizeStart = { x: 0, y: 0, w: 0, h: 0 };
 
-  resizeHandle.addEventListener('mousedown', (e) => {
-    e.preventDefault();
-    e.stopPropagation();
+  function startResize(clientX: number, clientY: number) {
     isResizing = true;
-    resizeStart = { x: e.clientX, y: e.clientY, w: shell.offsetWidth, h: shell.offsetHeight };
+    resizeStart = { x: clientX, y: clientY, w: shell.offsetWidth, h: shell.offsetHeight };
     document.body.style.cursor = 'nwse-resize';
-  });
-  resizeHandle.addEventListener('touchstart', (e) => {
-    e.preventDefault();
+  }
+
+  // Intercept at window capture phase so we beat the host's capture-phase drag listener.
+  function onWindowPointerDown(e: PointerEvent | MouseEvent) {
+    const target = e.target as HTMLElement;
+    if (!target?.closest?.('.chatroom-resize')) return;
     e.stopPropagation();
-    isResizing = true;
-    const t = e.touches[0];
-    resizeStart = { x: t.clientX, y: t.clientY, w: shell.offsetWidth, h: shell.offsetHeight };
-  }, { passive: false });
+    e.preventDefault();
+    startResize(e.clientX, e.clientY);
+  }
+  window.addEventListener('pointerdown', onWindowPointerDown, true);
+  window.addEventListener('mousedown', onWindowPointerDown, true);
 
   const WIDGET_MIN_W = isMobile ? 260 : 320;
   const WIDGET_MIN_H = isMobile ? 120 : 180;

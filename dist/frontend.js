@@ -394,6 +394,7 @@ function setup(ctx) {
   body.appendChild(controls);
   widget.root.appendChild(body);
   const resizeHandle = document.createElement("div");
+  resizeHandle.className = "chatroom-resize";
   resizeHandle.style.cssText = `
     position:absolute;right:0;bottom:0;width:20px;height:20px;
     cursor:nwse-resize;z-index:10;
@@ -405,20 +406,21 @@ function setup(ctx) {
   widget.root.appendChild(resizeHandle);
   let isResizing = false;
   let resizeStart = { x: 0, y: 0, w: 0, h: 0 };
-  resizeHandle.addEventListener("mousedown", (e) => {
-    e.preventDefault();
-    e.stopPropagation();
+  function startResize(clientX, clientY) {
     isResizing = true;
-    resizeStart = { x: e.clientX, y: e.clientY, w: shell.offsetWidth, h: shell.offsetHeight };
+    resizeStart = { x: clientX, y: clientY, w: shell.offsetWidth, h: shell.offsetHeight };
     document.body.style.cursor = "nwse-resize";
-  });
-  resizeHandle.addEventListener("touchstart", (e) => {
-    e.preventDefault();
+  }
+  function onWindowPointerDown(e) {
+    const target = e.target;
+    if (!target?.closest?.(".chatroom-resize"))
+      return;
     e.stopPropagation();
-    isResizing = true;
-    const t = e.touches[0];
-    resizeStart = { x: t.clientX, y: t.clientY, w: shell.offsetWidth, h: shell.offsetHeight };
-  }, { passive: false });
+    e.preventDefault();
+    startResize(e.clientX, e.clientY);
+  }
+  window.addEventListener("pointerdown", onWindowPointerDown, true);
+  window.addEventListener("mousedown", onWindowPointerDown, true);
   const WIDGET_MIN_W = isMobile ? 260 : 320;
   const WIDGET_MIN_H = isMobile ? 120 : 180;
   const WIDGET_MAX_W = Math.min(900, window.innerWidth - (isMobile ? 8 : 32));
