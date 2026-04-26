@@ -11,7 +11,8 @@ function getUserState(userId) {
       messageCount: 5,
       messageCountMin: 3,
       messageCountMax: 7,
-      isGenerating: false
+      isGenerating: false,
+      currentChatId: null
     };
     userStates.set(userId, state);
     return state;
@@ -40,10 +41,13 @@ async function getChatroomHistory(chatId) {
 async function saveChatroomHistory(chatId, history) {
   await spindle.variables.chat.set(chatId, CHATROOM_HISTORY_KEY, JSON.stringify(history));
 }
+function stripHtmlTags(text) {
+  return text.replace(/<[^>]*>/g, "");
+}
 function toLlmHistory(messages) {
   return messages.map((m) => ({
     role: m.isUser ? "user" : "assistant",
-    content: `[${m.name} in Chatroom]: ${m.content}`
+    content: `[${m.name} in Chatroom]: ${stripHtmlTags(m.content)}`
   }));
 }
 async function runCouncilGeneration(userId) {
@@ -73,7 +77,7 @@ async function runCouncilGeneration(userId) {
     const contextLimit = ctxLimitStr ? parseInt(ctxLimitStr, 10) : 10;
     const messages = await spindle.chat.getMessages(chatId);
     const recentMessages = messages.slice(-contextLimit);
-    const chatContext = recentMessages.map((m) => `${m.name || m.role}: ${m.content}`).join("\\n");
+    const chatContext = recentMessages.map((m) => `${m.name || m.role}: ${stripHtmlTags(m.content)}`).join("\\n");
     spindle.log.info("Fetching council members...");
     const councilMembers = await spindle.council.getMembers({ userId });
     if (councilMembers.length === 0) {
@@ -84,11 +88,11 @@ async function runCouncilGeneration(userId) {
     }
     spindle.log.info("Fetching active persona...");
     const activePersona = await spindle.personas.getActive(userId);
-    const personaName = activePersona ? activePersona.name : "The User";
     const councilContext = councilMembers.map((m) => `- ${m.name}: ${m.role}. Personality: ${m.personality}`).join("\\n");
     const systemPrompt = `You are running a live internet shitposting chatroom for the "council members" who are watching a story unfold.
 They are watching the main story chat and reacting to it in real-time.
-They talk casually, use internet slang, bicker with each other, and gossip about the characters or the author (${personaName}).
+They talk casually, use internet slang, bicker with each other, and gossip about the characters or the author ({{user}}).
+This is {{user}}'s chatroom, so council members should refer to {{user}} in the first person when talking about or to them.
 
 COUNCIL MEMBERS:
 ${councilContext}
@@ -124,6 +128,29 @@ MemberName (Username): The message content
       return;
     }
     spindle.log.info(`Generating using connection: ${conn.id} (${conn.provider} - ${conn.model})`);
+    const maxCtxStr = await spindle.variables.global.get("chatroom_max_context_tokens", userId);
+    const maxContextTokens = maxCtxStr ? parseInt(maxCtxStr, 10) : 4096;
+    if (spindle.permissions.has("generation")) {
+      try {
+        let countResult = await spindle.tokens.countMessages(promptMessages, { model: conn.model, userId });
+        spindle.log.info(`Prompt token count: ${countResult.total_tokens} / ${maxContextTokens} (model: ${countResult.model})`);
+        let trimAttempts = 0;
+        const maxTrimAttempts = 100;
+        while (countResult.total_tokens > maxContextTokens && trimAttempts < maxTrimAttempts) {
+          const firstNonSystemIdx = promptMessages.findIndex((m) => m.role !== "system");
+          if (firstNonSystemIdx === -1)
+            break;
+          promptMessages.splice(firstNonSystemIdx, 1);
+          trimAttempts++;
+          countResult = await spindle.tokens.countMessages(promptMessages, { model: conn.model, userId });
+        }
+        if (trimAttempts > 0) {
+          spindle.log.info(`Trimmed ${trimAttempts} chatroom history message(s) to fit within ${maxContextTokens} tokens. Final count: ${countResult.total_tokens}`);
+        }
+      } catch (e) {
+        spindle.log.warn(`Token count failed, skipping context clipping: ${e.message || String(e)}`);
+      }
+    }
     spindle.sendToFrontend({ type: "generation_started" }, userId);
     const stream = spindle.generate.rawStream({
       type: "raw",
@@ -193,6 +220,7 @@ spindle.onFrontendMessage(async (payload, userId) => {
     await spindle.variables.global.set("chatroom_interval_min", payload.intervalMin.toString(), userId);
     await spindle.variables.global.set("chatroom_interval_max", payload.intervalMax.toString(), userId);
     await spindle.variables.global.set("chatroom_context_limit", payload.contextLimit.toString(), userId);
+    await spindle.variables.global.set("chatroom_max_context_tokens", (payload.maxContextTokens ?? 4096).toString(), userId);
     await spindle.variables.global.set("chatroom_connection_id", payload.connectionId || "", userId);
     await spindle.variables.global.set("chatroom_trigger_mode", payload.triggerMode || "time", userId);
     await spindle.variables.global.set("chatroom_message_count", (payload.messageCount ?? 5).toString(), userId);
@@ -219,6 +247,7 @@ spindle.onFrontendMessage(async (payload, userId) => {
     const min = await spindle.variables.global.get("chatroom_interval_min", userId);
     const max = await spindle.variables.global.get("chatroom_interval_max", userId);
     const ctxLimit = await spindle.variables.global.get("chatroom_context_limit", userId);
+    const maxCtxTokens = await spindle.variables.global.get("chatroom_max_context_tokens", userId);
     const connId = await spindle.variables.global.get("chatroom_connection_id", userId);
     const triggerMode = await spindle.variables.global.get("chatroom_trigger_mode", userId);
     const messageCount = await spindle.variables.global.get("chatroom_message_count", userId);
@@ -249,6 +278,12 @@ spindle.onFrontendMessage(async (payload, userId) => {
     const state = getUserState(userId);
     state.autoReply = autoReply === "true";
     state.triggerMode = triggerMode || "time";
+    try {
+      const activeChat = await spindle.chats.getActive(userId);
+      state.currentChatId = activeChat ? activeChat.id : null;
+    } catch {
+      state.currentChatId = null;
+    }
     state.messageCount = messageCount ? parseInt(messageCount, 10) : 5;
     state.randomMessageCountEnabled = randomMessageCountEnabled ? randomMessageCountEnabled === "true" : true;
     state.messageCountMin = messageCountMin ? parseInt(messageCountMin, 10) : 3;
@@ -275,6 +310,7 @@ spindle.onFrontendMessage(async (payload, userId) => {
       messageCountMin: state.messageCountMin,
       messageCountMax: state.messageCountMax,
       contextLimit: ctxLimit ? parseInt(ctxLimit, 10) : 10,
+      maxContextTokens: maxCtxTokens ? parseInt(maxCtxTokens, 10) : 4096,
       connectionId: connId,
       connections,
       history,
@@ -356,5 +392,21 @@ spindle.on("MESSAGE_SENT", async (payload, eventUserId) => {
     }
   } catch (e) {
     spindle.log.error(`Message trigger error: ${e.message || String(e)}`);
+  }
+});
+spindle.on("CHAT_CHANGED", async (payload, eventUserId) => {
+  if (!eventUserId)
+    return;
+  const state = getUserState(eventUserId);
+  const newChatId = payload?.chatId ?? payload?.chat_id ?? null;
+  if (!newChatId) {
+    state.currentChatId = null;
+    spindle.sendToFrontend({ type: "hide_widget" }, eventUserId);
+    return;
+  }
+  if (state.currentChatId !== newChatId) {
+    state.currentChatId = newChatId;
+    const history = await getChatroomHistory(newChatId);
+    spindle.sendToFrontend({ type: "chat_changed", history }, eventUserId);
   }
 });

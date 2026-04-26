@@ -405,6 +405,14 @@ export function setup(ctx: SpindleFrontendContext) {
     contextInput
   ));
 
+  // Max Context Tokens
+  const maxContextTokensInput = createStyledNumberInput('512', '32768', '4096');
+  configCard.appendChild(createSettingRow(
+    'Max Context Tokens',
+    'Maximum tokens the council chatroom history can consume. Older messages are removed automatically when this limit is exceeded.',
+    maxContextTokensInput
+  ));
+
   // Save Button
   const saveBtnWrap = document.createElement('div');
   saveBtnWrap.style.cssText = 'display: flex; gap: 10px; padding-top: 4px;';
@@ -440,6 +448,7 @@ export function setup(ctx: SpindleFrontendContext) {
       messageCountMin: parseInt(messageCountMinInput.value, 10),
       messageCountMax: parseInt(messageCountMaxInput.value, 10),
       contextLimit: parseInt(contextInput.value, 10),
+      maxContextTokens: parseInt(maxContextTokensInput.value, 10),
       connectionId: connectionSelect.value
     });
   });
@@ -464,6 +473,9 @@ export function setup(ctx: SpindleFrontendContext) {
     tooltip: 'Council Chatroom',
     chromeless: true
   });
+
+  // Start hidden until a chat is active
+  widget.setVisible(false);
 
   ctx.dom.addStyle(`
     @keyframes spin { to { transform: rotate(360deg); } }
@@ -1027,6 +1039,20 @@ export function setup(ctx: SpindleFrontendContext) {
     }
   }
 
+  function clearMessages() {
+    messageList.innerHTML = '';
+    messageList.appendChild(loadingIndicator);
+    lastSenderId = null;
+    unreadCount = 0;
+  }
+
+  function loadHistory(history: any[]) {
+    clearMessages();
+    for (const msg of history) {
+      appendMessage(msg.name, msg.username, msg.content, msg.avatarUrl, msg.isUser);
+    }
+  }
+
   const unsubBackend = ctx.onBackendMessage((payload: any) => {
     if (payload.type === 'settings_loaded') {
       triggerModeSelect.value = payload.triggerMode ?? 'time';
@@ -1039,6 +1065,7 @@ export function setup(ctx: SpindleFrontendContext) {
       messageCountMinInput.value = (payload.messageCountMin ?? 3).toString();
       messageCountMaxInput.value = (payload.messageCountMax ?? 7).toString();
       contextInput.value = (payload.contextLimit ?? 10).toString();
+      maxContextTokensInput.value = (payload.maxContextTokens ?? 4096).toString();
 
       triggerMode = payload.triggerMode ?? 'time';
       messageInterval = payload.messageInterval ?? 10;
@@ -1076,13 +1103,22 @@ export function setup(ctx: SpindleFrontendContext) {
       }
       connectionSelect.value = payload.connectionId || '';
 
-      if (payload.history) {
-        messageList.innerHTML = '';
-        messageList.appendChild(loadingIndicator);
-        lastSenderId = null;
-        for (const msg of payload.history) {
-          appendMessage(msg.name, msg.username, msg.content, msg.avatarUrl, msg.isUser);
-        }
+      if (payload.history && payload.history.length > 0) {
+        loadHistory(payload.history);
+        widget.setVisible(true);
+      } else if (payload.history && payload.history.length === 0) {
+        clearMessages();
+      }
+    } else if (payload.type === 'hide_widget') {
+      widget.setVisible(false);
+      stopAutoTimer();
+      autoToggle.checked = false;
+    } else if (payload.type === 'chat_changed') {
+      widget.setVisible(true);
+      if (payload.history && payload.history.length > 0) {
+        loadHistory(payload.history);
+      } else {
+        clearMessages();
       }
     } else if (payload.type === 'generation_started') {
       isGenerating = true;

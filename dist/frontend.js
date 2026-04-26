@@ -300,6 +300,8 @@ function setup(ctx) {
   triggerModeSelect.addEventListener("change", updateTriggerMode);
   const contextInput = createStyledNumberInput("1", "50", "10");
   configCard.appendChild(createSettingRow("Context Retrieval (messages)", "How many recent story messages the council can see before reacting.", contextInput));
+  const maxContextTokensInput = createStyledNumberInput("512", "32768", "4096");
+  configCard.appendChild(createSettingRow("Max Context Tokens", "Maximum tokens the council chatroom history can consume. Older messages are removed automatically when this limit is exceeded.", maxContextTokensInput));
   const saveBtnWrap = document.createElement("div");
   saveBtnWrap.style.cssText = "display: flex; gap: 10px; padding-top: 4px;";
   const saveBtn = document.createElement("button");
@@ -333,6 +335,7 @@ function setup(ctx) {
       messageCountMin: parseInt(messageCountMinInput.value, 10),
       messageCountMax: parseInt(messageCountMaxInput.value, 10),
       contextLimit: parseInt(contextInput.value, 10),
+      maxContextTokens: parseInt(maxContextTokensInput.value, 10),
       connectionId: connectionSelect.value
     });
   });
@@ -352,6 +355,7 @@ function setup(ctx) {
     tooltip: "Council Chatroom",
     chromeless: true
   });
+  widget.setVisible(false);
   ctx.dom.addStyle(`
     @keyframes spin { to { transform: rotate(360deg); } }
     @keyframes msgIn { from { opacity:0; transform: translateY(6px) scale(.98); } to { opacity:1; transform: none; } }
@@ -851,6 +855,18 @@ function setup(ctx) {
       badge.style.display = "block";
     }
   }
+  function clearMessages() {
+    messageList.innerHTML = "";
+    messageList.appendChild(loadingIndicator);
+    lastSenderId = null;
+    unreadCount = 0;
+  }
+  function loadHistory(history) {
+    clearMessages();
+    for (const msg of history) {
+      appendMessage(msg.name, msg.username, msg.content, msg.avatarUrl, msg.isUser);
+    }
+  }
   const unsubBackend = ctx.onBackendMessage((payload) => {
     if (payload.type === "settings_loaded") {
       triggerModeSelect.value = payload.triggerMode ?? "time";
@@ -863,6 +879,7 @@ function setup(ctx) {
       messageCountMinInput.value = (payload.messageCountMin ?? 3).toString();
       messageCountMaxInput.value = (payload.messageCountMax ?? 7).toString();
       contextInput.value = (payload.contextLimit ?? 10).toString();
+      maxContextTokensInput.value = (payload.maxContextTokens ?? 4096).toString();
       triggerMode = payload.triggerMode ?? "time";
       messageInterval = payload.messageInterval ?? 10;
       randomIntervalEnabled = payload.randomIntervalEnabled ?? true;
@@ -894,13 +911,22 @@ function setup(ctx) {
         }
       }
       connectionSelect.value = payload.connectionId || "";
-      if (payload.history) {
-        messageList.innerHTML = "";
-        messageList.appendChild(loadingIndicator);
-        lastSenderId = null;
-        for (const msg of payload.history) {
-          appendMessage(msg.name, msg.username, msg.content, msg.avatarUrl, msg.isUser);
-        }
+      if (payload.history && payload.history.length > 0) {
+        loadHistory(payload.history);
+        widget.setVisible(true);
+      } else if (payload.history && payload.history.length === 0) {
+        clearMessages();
+      }
+    } else if (payload.type === "hide_widget") {
+      widget.setVisible(false);
+      stopAutoTimer();
+      autoToggle.checked = false;
+    } else if (payload.type === "chat_changed") {
+      widget.setVisible(true);
+      if (payload.history && payload.history.length > 0) {
+        loadHistory(payload.history);
+      } else {
+        clearMessages();
       }
     } else if (payload.type === "generation_started") {
       isGenerating = true;
