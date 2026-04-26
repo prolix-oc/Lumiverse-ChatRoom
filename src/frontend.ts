@@ -239,19 +239,17 @@ export function setup(ctx: SpindleFrontendContext) {
     return `hsl(${hue}, 70%, 60%)`;
   }
 
-  // Find the host's positioned container (walk up from widget.root)
-  function getWidgetContainer(): HTMLElement {
-    let el: HTMLElement = widget.root;
-    while (el.parentElement && el.parentElement !== document.body) {
-      const s = window.getComputedStyle(el.parentElement);
-      if (s.position === 'fixed' || s.position === 'absolute') {
-        return el.parentElement;
-      }
-      el = el.parentElement;
-    }
-    return widget.root;
-  }
-  const shell = getWidgetContainer();
+  // The host's widget container is the outer positioned wrapper around widget.root.
+  // With chromeless: true it's typically widget.root's immediate parent.
+  const shell = (widget.root.parentElement as HTMLElement) || widget.root;
+
+  // Apply our chrome to the host wrapper, and make widget.root fill it.
+  widget.root.style.cssText = `
+    width:100%;height:100%;
+    display:flex;flex-direction:column;
+    overflow:hidden;
+  `;
+
   shell.style.cssText = `
     display:flex;flex-direction:column;
     width:100%;height:100%;

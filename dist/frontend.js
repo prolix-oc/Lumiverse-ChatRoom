@@ -210,18 +210,12 @@ function setup(ctx) {
     const hue = hashHue(name);
     return `hsl(${hue}, 70%, 60%)`;
   }
-  function getWidgetContainer() {
-    let el = widget.root;
-    while (el.parentElement && el.parentElement !== document.body) {
-      const s = window.getComputedStyle(el.parentElement);
-      if (s.position === "fixed" || s.position === "absolute") {
-        return el.parentElement;
-      }
-      el = el.parentElement;
-    }
-    return widget.root;
-  }
-  const shell = getWidgetContainer();
+  const shell = widget.root.parentElement || widget.root;
+  widget.root.style.cssText = `
+    width:100%;height:100%;
+    display:flex;flex-direction:column;
+    overflow:hidden;
+  `;
   shell.style.cssText = `
     display:flex;flex-direction:column;
     width:100%;height:100%;
