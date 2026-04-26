@@ -197,6 +197,31 @@ function setup(ctx) {
   messageList.style.flexDirection = "column";
   messageList.style.gap = "14px";
   widget.root.appendChild(messageList);
+  ctx.dom.addStyle(`
+    @keyframes spin { 100% { transform: rotate(360deg); } }
+  `);
+  const loadingIndicator = document.createElement("div");
+  loadingIndicator.style.display = "none";
+  loadingIndicator.style.padding = "8px 12px";
+  loadingIndicator.style.fontSize = "12px";
+  loadingIndicator.style.color = "var(--lumiverse-text-dim)";
+  loadingIndicator.style.fontStyle = "italic";
+  loadingIndicator.innerHTML = `
+    <div style="display: flex; align-items: center; gap: 8px;">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="animation: spin 2s linear infinite;">
+        <line x1="12" y1="2" x2="12" y2="6"></line>
+        <line x1="12" y1="18" x2="12" y2="22"></line>
+        <line x1="4.93" y1="4.93" x2="7.76" y2="7.76"></line>
+        <line x1="16.24" y1="16.24" x2="19.07" y2="19.07"></line>
+        <line x1="2" y1="12" x2="6" y2="12"></line>
+        <line x1="18" y1="12" x2="22" y2="12"></line>
+        <line x1="4.93" y1="19.07" x2="7.76" y2="16.24"></line>
+        <line x1="16.24" y1="7.76" x2="19.07" y2="4.93"></line>
+      </svg>
+      Council is typing...
+    </div>
+  `;
+  messageList.appendChild(loadingIndicator);
   const controls = document.createElement("div");
   controls.style.padding = "10px 12px";
   controls.style.borderTop = "1px solid var(--lumiverse-border)";
@@ -234,7 +259,10 @@ function setup(ctx) {
   sendButton.style.transition = "opacity 0.2s";
   sendButton.addEventListener("mouseenter", () => sendButton.style.opacity = "0.9");
   sendButton.addEventListener("mouseleave", () => sendButton.style.opacity = "1");
+  let isGenerating = false;
   const sendMessage = () => {
+    if (isGenerating)
+      return;
     const text = inputField.value.trim();
     if (!text)
       return;
@@ -280,6 +308,8 @@ function setup(ctx) {
   genButton.addEventListener("mouseenter", () => genButton.style.background = "var(--lumiverse-fill-hover)");
   genButton.addEventListener("mouseleave", () => genButton.style.background = "var(--lumiverse-fill-subtle)");
   genButton.addEventListener("click", () => {
+    if (isGenerating)
+      return;
     ctx.sendToBackend({ type: "trigger_generation" });
   });
   toolsRow.appendChild(autoToggleLabel);
@@ -294,7 +324,8 @@ function setup(ctx) {
       const scheduleNext = () => {
         const nextMs = intervalMin * 1000 + Math.random() * ((intervalMax - intervalMin) * 1000);
         autoTimer = setTimeout(() => {
-          ctx.sendToBackend({ type: "trigger_generation" });
+          if (!isGenerating)
+            ctx.sendToBackend({ type: "trigger_generation" });
           scheduleNext();
         }, nextMs);
       };
@@ -378,7 +409,7 @@ function setup(ctx) {
     textDiv.textContent = content;
     contentDiv.appendChild(textDiv);
     msgEl.appendChild(contentDiv);
-    messageList.appendChild(msgEl);
+    messageList.insertBefore(msgEl, loadingIndicator);
     messageList.scrollTo({ top: messageList.scrollHeight, behavior: "smooth" });
   }
   ctx.onBackendMessage((payload) => {
@@ -398,6 +429,18 @@ function setup(ctx) {
         }
       }
       connectionSelect.value = payload.connectionId || "";
+    } else if (payload.type === "generation_started") {
+      isGenerating = true;
+      genButton.disabled = true;
+      genButton.style.opacity = "0.5";
+      loadingIndicator.style.display = "block";
+      messageList.appendChild(loadingIndicator);
+      messageList.scrollTo({ top: messageList.scrollHeight, behavior: "smooth" });
+    } else if (payload.type === "generation_ended") {
+      isGenerating = false;
+      genButton.disabled = false;
+      genButton.style.opacity = "1";
+      loadingIndicator.style.display = "none";
     } else if (payload.type === "new_message") {
       appendMessage(payload.name, payload.username || payload.name, payload.content, payload.avatarUrl, payload.isUser);
     } else if (payload.type === "error") {

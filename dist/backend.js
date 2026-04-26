@@ -89,13 +89,35 @@ MemberName (Username): The message content
         ...chatroomHistory.slice(-20)
       ];
       const connId = await spindle.variables.global.get("chatroom_connection_id", userId);
-      const result = await spindle.generate.quiet({
-        messages: promptMessages,
-        ...connId ? { connection_id: connId } : {}
+      let conn = null;
+      if (connId) {
+        conn = await spindle.connections.get(connId, userId);
+      }
+      if (!conn) {
+        const conns = await spindle.connections.list(userId);
+        conn = conns.find((c) => c.is_default) || conns[0];
+      }
+      if (!conn) {
+        spindle.sendToFrontend({ type: "error", message: "No connection profile available." }, userId);
+        return;
+      }
+      spindle.sendToFrontend({ type: "generation_started" }, userId);
+      const stream = spindle.generate.rawStream({
+        provider: conn.provider,
+        model: conn.model,
+        connection_id: conn.id,
+        messages: promptMessages
       });
-      const text = result.content;
-      chatroomHistory.push({ role: "assistant", content: text });
-      const chunks = text.split("---");
+      let fullText = "";
+      for await (const chunk of stream) {
+        if (chunk.type === "token") {
+          fullText += chunk.token;
+        } else if (chunk.type === "done") {
+          fullText = chunk.content || fullText;
+        }
+      }
+      chatroomHistory.push({ role: "assistant", content: fullText });
+      const chunks = fullText.split("---");
       for (const chunk of chunks) {
         if (!chunk.trim())
           continue;
@@ -119,7 +141,9 @@ MemberName (Username): The message content
           isUser: false
         }, userId);
       }
+      spindle.sendToFrontend({ type: "generation_ended" }, userId);
     } catch (e) {
+      spindle.sendToFrontend({ type: "generation_ended" }, userId);
       spindle.sendToFrontend({ type: "error", message: e.message || String(e) }, userId);
     }
   }

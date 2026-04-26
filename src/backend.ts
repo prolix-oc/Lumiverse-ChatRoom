@@ -116,18 +116,43 @@ MemberName (Username): The message content
       ];
 
       const connId = await spindle.variables.global.get('chatroom_connection_id', userId);
+      
+      let conn: any = null;
+      if (connId) {
+        conn = await spindle.connections.get(connId, userId);
+      }
+      if (!conn) {
+        const conns = await spindle.connections.list(userId);
+        conn = conns.find((c: any) => c.is_default) || conns[0];
+      }
 
-      const result = await spindle.generate.quiet({
-        messages: promptMessages,
-        ...(connId ? { connection_id: connId } : {})
+      if (!conn) {
+        spindle.sendToFrontend({ type: 'error', message: 'No connection profile available.' }, userId);
+        return;
+      }
+
+      spindle.sendToFrontend({ type: 'generation_started' }, userId);
+
+      const stream = spindle.generate.rawStream({
+        provider: conn.provider,
+        model: conn.model,
+        connection_id: conn.id,
+        messages: promptMessages
       });
 
-      const text = result.content;
+      let fullText = '';
+      for await (const chunk of stream) {
+        if (chunk.type === 'token') {
+          fullText += chunk.token;
+        } else if (chunk.type === 'done') {
+          fullText = chunk.content || fullText;
+        }
+      }
       
       // Store the generated response in history so they have continuity
-      chatroomHistory.push({ role: 'assistant', content: text });
+      chatroomHistory.push({ role: 'assistant', content: fullText });
       
-      const chunks = text.split('---');
+      const chunks = fullText.split('---');
 
       for (const chunk of chunks) {
         if (!chunk.trim()) continue;
@@ -157,7 +182,11 @@ MemberName (Username): The message content
           isUser: false
         }, userId);
       }
+      
+      spindle.sendToFrontend({ type: 'generation_ended' }, userId);
+
     } catch (e: any) {
+      spindle.sendToFrontend({ type: 'generation_ended' }, userId);
       spindle.sendToFrontend({ type: 'error', message: e.message || String(e) }, userId);
     }
   }
