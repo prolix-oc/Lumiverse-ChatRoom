@@ -85,7 +85,7 @@ function setup(ctx) {
     toggleBtn.style.borderColor = "var(--lumiverse-border)";
   });
   toggleBtn.addEventListener("click", () => {
-    widget.setVisible(!widget.isVisible());
+    setWidgetVisible(!widgetVisible);
   });
   toggleCard.appendChild(toggleInfo);
   toggleCard.appendChild(toggleBtn);
@@ -376,7 +376,21 @@ function setup(ctx) {
     tooltip: "Council Chatroom",
     chromeless: true
   });
-  widget.setVisible(false);
+  let widgetVisible = false;
+  function setWidgetVisible(visible) {
+    widgetVisible = visible;
+    widget.setVisible(visible);
+    if (visible) {
+      shell.style.removeProperty("opacity");
+      shell.style.removeProperty("visibility");
+      shell.style.removeProperty("pointer-events");
+    } else {
+      shell.style.opacity = "0";
+      shell.style.visibility = "hidden";
+      shell.style.pointerEvents = "none";
+    }
+  }
+  setWidgetVisible(false);
   function persistWidgetState() {
     if (isMobile)
       return;
@@ -977,7 +991,7 @@ function setup(ctx) {
       fsBtn.title = "Exit Fullscreen";
     }
   });
-  hideBtn.addEventListener("click", () => widget.setVisible(false));
+  hideBtn.addEventListener("click", () => setWidgetVisible(false));
   window.addEventListener("resize", () => {
     if (isFullscreen && !supportsNativeFullscreen) {
       shell.style.setProperty("width", window.innerWidth + "px", "important");
@@ -1122,13 +1136,13 @@ function setup(ctx) {
       connectionSelect.value = payload.connectionId || "";
       if (payload.history && payload.history.length > 0) {
         loadHistory(payload.history);
-        widget.setVisible(true);
+        setWidgetVisible(true);
       } else if (payload.hasActiveChat) {
         clearMessages();
-        widget.setVisible(true);
+        setWidgetVisible(true);
       } else {
         clearMessages();
-        widget.setVisible(false);
+        setWidgetVisible(false);
       }
       if (!isMobile && payload.widgetX != null && payload.widgetY != null) {
         widget.moveTo(payload.widgetX, payload.widgetY);
@@ -1139,11 +1153,11 @@ function setup(ctx) {
         expandedHeight = payload.widgetH;
       }
     } else if (payload.type === "hide_widget") {
-      widget.setVisible(false);
+      setWidgetVisible(false);
       stopAutoTimer();
       autoToggle.checked = false;
     } else if (payload.type === "chat_changed") {
-      widget.setVisible(true);
+      setWidgetVisible(true);
       if (payload.history && payload.history.length > 0) {
         loadHistory(payload.history);
       } else {

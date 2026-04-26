@@ -98,7 +98,7 @@ export function setup(ctx: SpindleFrontendContext) {
     toggleBtn.style.borderColor = 'var(--lumiverse-border)';
   });
   toggleBtn.addEventListener('click', () => {
-    widget.setVisible(!widget.isVisible());
+    setWidgetVisible(!widgetVisible);
   });
 
   toggleCard.appendChild(toggleInfo);
@@ -498,7 +498,22 @@ export function setup(ctx: SpindleFrontendContext) {
   });
 
   // Start hidden until a chat is active
-  widget.setVisible(false);
+  let widgetVisible = false;
+  function setWidgetVisible(visible: boolean) {
+    widgetVisible = visible;
+    widget.setVisible(visible);
+    // Manual fallback: some host versions don't reliably restore chromeless widgets
+    if (visible) {
+      shell.style.removeProperty('opacity');
+      shell.style.removeProperty('visibility');
+      shell.style.removeProperty('pointer-events');
+    } else {
+      shell.style.opacity = '0';
+      shell.style.visibility = 'hidden';
+      shell.style.pointerEvents = 'none';
+    }
+  }
+  setWidgetVisible(false);
 
   // Persist widget position/size (skip on mobile)
   function persistWidgetState() {
@@ -1195,7 +1210,7 @@ export function setup(ctx: SpindleFrontendContext) {
     }
   });
 
-  hideBtn.addEventListener('click', () => widget.setVisible(false));
+  hideBtn.addEventListener('click', () => setWidgetVisible(false));
 
   window.addEventListener('resize', () => {
     if (isFullscreen && !supportsNativeFullscreen) {
@@ -1352,13 +1367,13 @@ export function setup(ctx: SpindleFrontendContext) {
 
       if (payload.history && payload.history.length > 0) {
         loadHistory(payload.history);
-        widget.setVisible(true);
+        setWidgetVisible(true);
       } else if (payload.hasActiveChat) {
         clearMessages();
-        widget.setVisible(true);
+        setWidgetVisible(true);
       } else {
         clearMessages();
-        widget.setVisible(false);
+        setWidgetVisible(false);
       }
 
       // Restore persisted widget position/size (desktop only)
@@ -1371,11 +1386,11 @@ export function setup(ctx: SpindleFrontendContext) {
         expandedHeight = payload.widgetH;
       }
     } else if (payload.type === 'hide_widget') {
-      widget.setVisible(false);
+      setWidgetVisible(false);
       stopAutoTimer();
       autoToggle.checked = false;
     } else if (payload.type === 'chat_changed') {
-      widget.setVisible(true);
+      setWidgetVisible(true);
       if (payload.history && payload.history.length > 0) {
         loadHistory(payload.history);
       } else {
