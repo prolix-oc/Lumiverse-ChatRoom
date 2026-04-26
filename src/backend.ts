@@ -21,7 +21,7 @@ spindle.onFrontendMessage(async (payload, userId) => {
     const max = await spindle.variables.global.get('chatroom_interval_max', userId);
     const ctxLimit = await spindle.variables.global.get('chatroom_context_limit', userId);
     const connId = await spindle.variables.global.get('chatroom_connection_id', userId);
-    
+
     let connections: any[] = [];
     try {
       if (spindle.permissions.has('generation')) {
@@ -30,7 +30,21 @@ spindle.onFrontendMessage(async (payload, userId) => {
     } catch (err) {
       spindle.log.warn('Could not fetch connections for chatroom overlay settings.');
     }
-    
+
+    // Resolve active persona for display name + avatar
+    let userPersona = null;
+    try {
+      const persona = await spindle.personas.getActive(userId);
+      if (persona) {
+        userPersona = {
+          name: persona.name,
+          avatarUrl: persona.image_id ? `/api/v1/images/${persona.image_id}` : null
+        };
+      }
+    } catch (e) {
+      spindle.log.warn('Could not fetch active persona for chatroom.');
+    }
+
     spindle.sendToFrontend({
       type: 'settings_loaded',
       intervalMin: min ? parseInt(min, 10) : 5,
@@ -38,32 +52,44 @@ spindle.onFrontendMessage(async (payload, userId) => {
       contextLimit: ctxLimit ? parseInt(ctxLimit, 10) : 10,
       connectionId: connId,
       connections: connections,
-      history: uiMessages
+      history: uiMessages,
+      userPersona
     }, userId);
     return;
   }
 
   if (payload.type === 'user_message') {
     spindle.log.info('Received user_message trigger');
-    // A message from the user specifically to the council
-    chatroomHistory.push({ role: 'user', content: `[User Message in Chatroom]: ${payload.content}` });
-    
+
+    // Resolve active persona
+    let personaName = 'The User';
+    let personaAvatar: string | null = null;
+    try {
+      const activePersona = await spindle.personas.getActive(userId);
+      if (activePersona) {
+        personaName = activePersona.name;
+        personaAvatar = activePersona.image_id ? `/api/v1/images/${activePersona.image_id}` : null;
+      }
+    } catch (e) {
+      spindle.log.warn('Could not fetch active persona for user message.');
+    }
+
+    chatroomHistory.push({ role: 'user', content: `[${personaName} in Chatroom]: ${payload.content}` });
+
     const uiMsg = {
-      name: 'The User',
-      username: 'User',
+      name: personaName,
+      username: personaName,
       content: payload.content,
-      avatarUrl: null,
+      avatarUrl: personaAvatar,
       isUser: true
     };
     uiMessages.push(uiMsg);
 
-    // Broadcast back so it renders
     spindle.sendToFrontend({
       type: 'new_message',
       ...uiMsg
     }, userId);
 
-    // Auto-generate a reply for user messages
     payload.type = 'trigger_generation';
   }
   

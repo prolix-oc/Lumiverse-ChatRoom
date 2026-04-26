@@ -23,6 +23,18 @@ spindle.onFrontendMessage(async (payload, userId) => {
     } catch (err) {
       spindle.log.warn("Could not fetch connections for chatroom overlay settings.");
     }
+    let userPersona = null;
+    try {
+      const persona = await spindle.personas.getActive(userId);
+      if (persona) {
+        userPersona = {
+          name: persona.name,
+          avatarUrl: persona.image_id ? `/api/v1/images/${persona.image_id}` : null
+        };
+      }
+    } catch (e) {
+      spindle.log.warn("Could not fetch active persona for chatroom.");
+    }
     spindle.sendToFrontend({
       type: "settings_loaded",
       intervalMin: min ? parseInt(min, 10) : 5,
@@ -30,18 +42,30 @@ spindle.onFrontendMessage(async (payload, userId) => {
       contextLimit: ctxLimit ? parseInt(ctxLimit, 10) : 10,
       connectionId: connId,
       connections,
-      history: uiMessages
+      history: uiMessages,
+      userPersona
     }, userId);
     return;
   }
   if (payload.type === "user_message") {
     spindle.log.info("Received user_message trigger");
-    chatroomHistory.push({ role: "user", content: `[User Message in Chatroom]: ${payload.content}` });
+    let personaName = "The User";
+    let personaAvatar = null;
+    try {
+      const activePersona = await spindle.personas.getActive(userId);
+      if (activePersona) {
+        personaName = activePersona.name;
+        personaAvatar = activePersona.image_id ? `/api/v1/images/${activePersona.image_id}` : null;
+      }
+    } catch (e) {
+      spindle.log.warn("Could not fetch active persona for user message.");
+    }
+    chatroomHistory.push({ role: "user", content: `[${personaName} in Chatroom]: ${payload.content}` });
     const uiMsg = {
-      name: "The User",
-      username: "User",
+      name: personaName,
+      username: personaName,
       content: payload.content,
-      avatarUrl: null,
+      avatarUrl: personaAvatar,
       isUser: true
     };
     uiMessages.push(uiMsg);

@@ -16,7 +16,7 @@ export function setup(ctx: SpindleFrontendContext) {
   settingsContainer.style.display = 'flex';
   settingsContainer.style.flexDirection = 'column';
   settingsContainer.style.gap = '20px';
-  
+
   const titleEl = document.createElement('h3');
   titleEl.textContent = 'Council Chatroom Overlay';
   titleEl.style.marginTop = '0';
@@ -34,8 +34,6 @@ export function setup(ctx: SpindleFrontendContext) {
 
   function makeInteractive(el: HTMLElement) {
     const stop = (e: Event) => e.stopPropagation();
-    // Only block bubble phase — capture-phase stopPropagation on the target
-    // would prevent our own bubble-phase listeners from firing.
     el.addEventListener('mousedown', stop, false);
     el.addEventListener('touchstart', stop, { passive: true, capture: false });
     el.addEventListener('pointerdown', stop, false);
@@ -71,7 +69,6 @@ export function setup(ctx: SpindleFrontendContext) {
   configTitle.style.fontSize = '14px';
   configSection.appendChild(configTitle);
 
-  // Connection setting
   const connectionRow = document.createElement('div');
   connectionRow.style.display = 'flex';
   connectionRow.style.flexDirection = 'column';
@@ -95,7 +92,6 @@ export function setup(ctx: SpindleFrontendContext) {
   connectionRow.appendChild(connectionSelect);
   configSection.appendChild(connectionRow);
 
-  // Interval setting
   const intervalRow = document.createElement('div');
   intervalRow.style.display = 'flex';
   intervalRow.style.flexDirection = 'column';
@@ -144,7 +140,6 @@ export function setup(ctx: SpindleFrontendContext) {
   intervalRow.appendChild(intervalInputs);
   configSection.appendChild(intervalRow);
 
-  // Context history setting
   const contextRow = document.createElement('div');
   contextRow.style.display = 'flex';
   contextRow.style.flexDirection = 'column';
@@ -192,103 +187,131 @@ export function setup(ctx: SpindleFrontendContext) {
       contextLimit: parseInt(contextInput.value, 10),
       connectionId: connectionSelect.value
     });
-    ctx.dom.addStyle(''); // Trigger a minor repaint/feedback if desired, or better:
-    // we can use a toast but we don't have it explicitly bound in frontend context directly easily unless we emit.
-    // We'll just trust the save since we don't have ctx.toast easily without event emission here.
+    ctx.dom.addStyle('');
   });
   configSection.appendChild(saveBtn);
 
   settingsContainer.appendChild(configSection);
   tab.root.appendChild(settingsContainer);
 
-
   // --- 2. Float Widget UI ---
   const isMobile = window.innerWidth <= 768 || 'ontouchstart' in window;
-  const WIDGET_MIN_W = isMobile ? 260 : 340;
-  const WIDGET_MIN_H = isMobile ? 180 : 220;
-  const WIDGET_MAX_W = Math.min(820, window.innerWidth - (isMobile ? 8 : 40));
-  const WIDGET_MAX_H = Math.min(960, window.innerHeight - (isMobile ? 40 : 80));
 
   const widget = ctx.ui.createFloatWidget({
-    width: isMobile ? Math.min(400, window.innerWidth - 16) : 460,
-    height: isMobile ? Math.min(640, window.innerHeight - 80) : 640,
+    width: isMobile ? Math.min(380, window.innerWidth - 16) : 440,
+    height: isMobile ? Math.min(540, window.innerHeight - 80) : 620,
     initialPosition: {
-      x: isMobile ? 8 : window.innerWidth - 500,
-      y: isMobile ? 40 : window.innerHeight - 680
+      x: isMobile ? 8 : window.innerWidth - 480,
+      y: isMobile ? 40 : window.innerHeight - 660
     },
     snapToEdge: true,
     tooltip: 'Council Chatroom',
-    chromeless: false
+    chromeless: true
   });
 
-  const widgetContainer = widget.root.parentElement || widget.root;
-  widget.root.style.position = 'relative';
-  widget.root.style.display = 'flex';
-  widget.root.style.flexDirection = 'column';
-  widget.root.style.width = '100%';
-  widget.root.style.height = '100%';
-  widget.root.style.background = 'var(--lumiverse-bg)';
-  widget.root.style.color = 'var(--lumiverse-text)';
-  widget.root.style.overflow = 'hidden';
-  widget.root.style.borderRadius = 'inherit';
-  widget.root.style.fontFamily = 'var(--lumiverse-font-family, system-ui, -apple-system, sans-serif)';
-
   ctx.dom.addStyle(`
-    @keyframes spin { 100% { transform: rotate(360deg); } }
-    @keyframes msgPop { from { opacity:0; transform: translateY(10px) scale(0.98); } to { opacity:1; transform: translateY(0) scale(1); } }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @keyframes msgIn { from { opacity:0; transform: translateY(6px) scale(.98); } to { opacity:1; transform: none; } }
     .chatroom-scroll::-webkit-scrollbar { width: 5px; }
     .chatroom-scroll::-webkit-scrollbar-track { background: transparent; }
     .chatroom-scroll::-webkit-scrollbar-thumb { background: var(--lumiverse-border); border-radius: 3px; }
-    .chatroom-scroll::-webkit-scrollbar-thumb:hover { background: var(--lumiverse-border-hover); }
+    .chatroom-msg { animation: msgIn .2s ease-out; }
   `);
 
-  // ── State ──
   let autoTimer: any = null;
   let intervalMin = 5;
   let intervalMax = 15;
   let isGenerating = false;
   let isCollapsed = false;
   let isFullscreen = false;
-  let preFullscreenState: { w: number; h: number; x: number; y: number } | null = null;
-  let expandedHeight = 640;
+  let expandedHeight = 620;
   let unreadCount = 0;
+  let lastSenderId: string | null = null;
+  let userPersona: { name: string; avatarUrl: string | null } | null = null;
+
+  function hashHue(str: string) {
+    let h = 0;
+    for (let i = 0; i < str.length; i++) h = str.charCodeAt(i) + ((h << 5) - h);
+    return Math.abs(h) % 360;
+  }
+  function memberColor(name: string) {
+    const hue = hashHue(name);
+    return `hsl(${hue}, 70%, 60%)`;
+  }
+
+  // Find the host's positioned container (walk up from widget.root)
+  function getWidgetContainer(): HTMLElement {
+    let el: HTMLElement = widget.root;
+    while (el.parentElement && el.parentElement !== document.body) {
+      const s = window.getComputedStyle(el.parentElement);
+      if (s.position === 'fixed' || s.position === 'absolute') {
+        return el.parentElement;
+      }
+      el = el.parentElement;
+    }
+    return widget.root;
+  }
+  const shell = getWidgetContainer();
+  shell.style.cssText = `
+    display:flex;flex-direction:column;
+    width:100%;height:100%;
+    background:var(--lumiverse-bg);
+    color:var(--lumiverse-text);
+    border-radius:20px;
+    box-shadow:0 20px 60px rgba(0,0,0,0.3), 0 4px 12px rgba(0,0,0,0.15), inset 0 1px 0 rgba(255,255,255,0.05);
+    border:1px solid var(--lumiverse-border);
+    overflow:hidden;
+    font-family:var(--lumiverse-font-family, system-ui, -apple-system, sans-serif);
+    position:relative;
+  `;
 
   // ── Header ──
   const header = document.createElement('div');
   header.style.cssText = `
-    padding: 12px 16px;
-    background: var(--lumiverse-fill-subtle);
-    border-bottom: 1px solid var(--lumiverse-border);
-    display: flex; align-items: center; gap: 10px;
-    flex-shrink: 0; cursor: default; user-select: none;
+    padding:14px 18px;
+    background:linear-gradient(180deg, var(--lumiverse-fill-subtle) 0%, var(--lumiverse-fill) 100%);
+    border-bottom:1px solid var(--lumiverse-border);
+    display:flex;align-items:center;gap:12px;
+    flex-shrink:0;cursor:grab;user-select:none;
+    position:relative;
   `;
 
   const headerLeft = document.createElement('div');
   headerLeft.style.cssText = 'display:flex;align-items:center;gap:10px;flex:1;min-width:0;';
 
   const headerIcon = document.createElement('div');
-  headerIcon.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>`;
+  headerIcon.innerHTML = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>`;
   headerIcon.style.cssText = 'display:flex;color:var(--lumiverse-primary);flex-shrink:0;';
 
-  const headerText = document.createElement('span');
-  headerText.textContent = 'Council Chatroom';
-  headerText.style.cssText = 'font-weight:600;font-size:14px;color:var(--lumiverse-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+  const headerTextWrap = document.createElement('div');
+  headerTextWrap.style.cssText = 'display:flex;flex-direction:column;gap:1px;min-width:0;';
+
+  const headerTitle = document.createElement('span');
+  headerTitle.textContent = 'Council Chatroom';
+  headerTitle.style.cssText = 'font-weight:700;font-size:14px;color:var(--lumiverse-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+
+  const headerSubtitle = document.createElement('span');
+  headerSubtitle.textContent = 'Watching the story unfold…';
+  headerSubtitle.style.cssText = 'font-size:11px;color:var(--lumiverse-text-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+
+  headerTextWrap.appendChild(headerTitle);
+  headerTextWrap.appendChild(headerSubtitle);
 
   const badge = document.createElement('span');
   badge.style.cssText = `
     display:none;background:var(--lumiverse-primary);color:white;
-    font-size:10px;font-weight:700;padding:2px 6px;border-radius:10px;
-    min-width:16px;text-align:center;flex-shrink:0;
+    font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px;
+    min-width:16px;text-align:center;flex-shrink:0;margin-left:4px;
   `;
 
   headerLeft.appendChild(headerIcon);
-  headerLeft.appendChild(headerText);
+  headerLeft.appendChild(headerTextWrap);
   headerLeft.appendChild(badge);
 
   const headerActions = document.createElement('div');
-  headerActions.style.cssText = 'display:flex;align-items:center;gap:4px;flex-shrink:0;';
+  headerActions.style.cssText = 'display:flex;align-items:center;gap:2px;flex-shrink:0;';
 
-  function headerBtn(html: string, title: string) {
+  function iconBtn(html: string, title: string) {
     const b = document.createElement('button');
     b.innerHTML = html;
     b.title = title;
@@ -304,15 +327,15 @@ export function setup(ctx: SpindleFrontendContext) {
     return b;
   }
 
-  const fsBtn = headerBtn(
+  const fsBtn = iconBtn(
     `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>`,
     'Fullscreen'
   );
-  const collapseBtn = headerBtn(
+  const collapseBtn = iconBtn(
     `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>`,
     'Collapse'
   );
-  const hideBtn = headerBtn(
+  const hideBtn = iconBtn(
     `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`,
     'Hide'
   );
@@ -324,6 +347,22 @@ export function setup(ctx: SpindleFrontendContext) {
   header.appendChild(headerActions);
   widget.root.appendChild(header);
 
+  // Drag
+  let isDragging = false;
+  let dragStart = { x: 0, y: 0, wx: 0, wy: 0 };
+  header.addEventListener('mousedown', (e) => {
+    if ((e.target as HTMLElement).closest('button')) return;
+    isDragging = true;
+    header.style.cursor = 'grabbing';
+    const pos = widget.getPosition();
+    dragStart = { x: e.clientX, y: e.clientY, wx: pos.x, wy: pos.y };
+  });
+  document.addEventListener('mousemove', (e) => {
+    if (!isDragging) return;
+    widget.moveTo(dragStart.wx + (e.clientX - dragStart.x), dragStart.wy + (e.clientY - dragStart.y));
+  });
+  document.addEventListener('mouseup', () => { isDragging = false; header.style.cursor = 'grab'; });
+
   // ── Body ──
   const body = document.createElement('div');
   body.style.cssText = 'flex:1;display:flex;flex-direction:column;overflow:hidden;min-height:0;';
@@ -332,22 +371,23 @@ export function setup(ctx: SpindleFrontendContext) {
   messageList.className = 'chatroom-scroll';
   messageList.style.cssText = `
     flex:1;overflow-y:auto;overflow-x:hidden;
-    padding:16px;display:flex;flex-direction:column;gap:14px;min-height:0;
+    padding:16px;display:flex;flex-direction:column;gap:2px;min-height:0;
   `;
 
   const loadingIndicator = document.createElement('div');
+  loadingIndicator.className = 'chatroom-msg';
   loadingIndicator.style.cssText = `
     display:none;padding:10px 16px;align-items:center;gap:8px;
     font-size:12px;color:var(--lumiverse-text-dim);font-style:italic;
   `;
   loadingIndicator.innerHTML = `
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="animation:spin 2s linear infinite;flex-shrink:0;">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="animation:spin 1.5s linear infinite;flex-shrink:0;">
       <line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/>
       <line x1="4.93" y1="4.93" x2="7.76" y2="7.76"/><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"/>
       <line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/>
       <line x1="4.93" y1="19.07" x2="7.76" y2="16.24"/><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"/>
     </svg>
-    <span>Council is typing...</span>
+    <span>Council is typing…</span>
   `;
   messageList.appendChild(loadingIndicator);
   body.appendChild(messageList);
@@ -360,18 +400,18 @@ export function setup(ctx: SpindleFrontendContext) {
   `;
 
   const inputRow = document.createElement('div');
-  inputRow.style.cssText = 'display:flex;gap:10px;align-items:center;';
+  inputRow.style.cssText = 'display:flex;gap:10px;align-items:flex-end;';
 
-  const inputField = document.createElement('input');
+  const inputField = document.createElement('textarea');
   makeInteractive(inputField);
-  inputField.type = 'text';
-  inputField.placeholder = 'Type a message...';
+  inputField.placeholder = 'Type a message…';
+  inputField.rows = 1;
   inputField.style.cssText = `
     flex:1;padding:10px 14px;border:1px solid var(--lumiverse-border);
-    border-radius:20px;background:var(--lumiverse-fill-subtle);color:var(--lumiverse-text);
-    font-size:${isMobile ? '16px' : '14px'};outline:none;min-width:0;
+    border-radius:18px;background:var(--lumiverse-fill-subtle);color:var(--lumiverse-text);
+    font-size:${isMobile ? '16px' : '14px'};outline:none;min-width:0;resize:none;
+    font-family:inherit;line-height:1.4;max-height:100px;overflow-y:auto;
   `;
-  inputField.addEventListener('pointerdown', () => inputField.focus());
 
   const sendButton = document.createElement('button');
   makeInteractive(sendButton);
@@ -382,7 +422,7 @@ export function setup(ctx: SpindleFrontendContext) {
     color:white;border:none;cursor:pointer;flex-shrink:0;
     transition:opacity .2s,transform .1s;
   `;
-  sendButton.addEventListener('mouseenter', () => sendButton.style.opacity = '0.9');
+  sendButton.addEventListener('mouseenter', () => sendButton.style.opacity = '0.85');
   sendButton.addEventListener('mouseleave', () => sendButton.style.opacity = '1');
 
   inputRow.appendChild(inputField);
@@ -421,13 +461,13 @@ export function setup(ctx: SpindleFrontendContext) {
   // ── Resize handle ──
   const resizeHandle = document.createElement('div');
   resizeHandle.style.cssText = `
-    position:absolute;right:0;bottom:0;width:18px;height:18px;
+    position:absolute;right:0;bottom:0;width:20px;height:20px;
     cursor:nwse-resize;z-index:10;
     display:${isMobile ? 'none' : 'flex'};
     align-items:flex-end;justify-content:flex-end;
-    padding:0 3px 3px 0;
+    padding:0 4px 4px 0;
   `;
-  resizeHandle.innerHTML = `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="opacity:.35;"><polyline points="22 12 22 22 12 22"/></svg>`;
+  resizeHandle.innerHTML = `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="opacity:.3;"><polyline points="22 12 22 22 12 22"/></svg>`;
   widget.root.appendChild(resizeHandle);
 
   let isResizing = false;
@@ -437,8 +477,7 @@ export function setup(ctx: SpindleFrontendContext) {
     e.preventDefault();
     e.stopPropagation();
     isResizing = true;
-    const rect = widgetContainer.getBoundingClientRect();
-    resizeStart = { x: e.clientX, y: e.clientY, w: rect.width, h: rect.height };
+    resizeStart = { x: e.clientX, y: e.clientY, w: shell.offsetWidth, h: shell.offsetHeight };
     document.body.style.cursor = 'nwse-resize';
   });
   resizeHandle.addEventListener('touchstart', (e) => {
@@ -446,9 +485,13 @@ export function setup(ctx: SpindleFrontendContext) {
     e.stopPropagation();
     isResizing = true;
     const t = e.touches[0];
-    const rect = widgetContainer.getBoundingClientRect();
-    resizeStart = { x: t.clientX, y: t.clientY, w: rect.width, h: rect.height };
+    resizeStart = { x: t.clientX, y: t.clientY, w: shell.offsetWidth, h: shell.offsetHeight };
   }, { passive: false });
+
+  const WIDGET_MIN_W = isMobile ? 260 : 320;
+  const WIDGET_MIN_H = isMobile ? 120 : 180;
+  const WIDGET_MAX_W = Math.min(900, window.innerWidth - (isMobile ? 8 : 32));
+  const WIDGET_MAX_H = Math.min(1000, window.innerHeight - (isMobile ? 32 : 64));
 
   function onResizeMove(e: MouseEvent | TouchEvent) {
     if (!isResizing) return;
@@ -456,8 +499,8 @@ export function setup(ctx: SpindleFrontendContext) {
     const cy = 'touches' in e ? e.touches[0].clientY : e.clientY;
     const nw = Math.max(WIDGET_MIN_W, Math.min(WIDGET_MAX_W, resizeStart.w + (cx - resizeStart.x)));
     const nh = Math.max(WIDGET_MIN_H, Math.min(WIDGET_MAX_H, resizeStart.h + (cy - resizeStart.y)));
-    widgetContainer.style.width = nw + 'px';
-    widgetContainer.style.height = nh + 'px';
+    shell.style.width = nw + 'px';
+    shell.style.height = nh + 'px';
     if (isCollapsed) { isCollapsed = false; updateCollapse(); }
   }
   function onResizeEnd() { isResizing = false; document.body.style.cursor = ''; }
@@ -472,20 +515,23 @@ export function setup(ctx: SpindleFrontendContext) {
       body.style.display = 'none';
       collapseBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>`;
       collapseBtn.title = 'Expand';
-      widgetContainer.style.height = header.offsetHeight + 'px';
-      if (unreadCount > 0) { badge.textContent = unreadCount > 99 ? '99+' : String(unreadCount); badge.style.display = 'block'; }
+      shell.style.height = header.offsetHeight + 'px';
+      if (unreadCount > 0) {
+        badge.textContent = unreadCount > 99 ? '99+' : String(unreadCount);
+        badge.style.display = 'block';
+      }
     } else {
       body.style.display = 'flex';
       collapseBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>`;
       collapseBtn.title = 'Collapse';
-      if (!isFullscreen) widgetContainer.style.height = expandedHeight + 'px';
+      if (!isFullscreen) shell.style.height = expandedHeight + 'px';
       badge.style.display = 'none';
       unreadCount = 0;
     }
   }
 
   collapseBtn.addEventListener('click', () => {
-    if (!isCollapsed) expandedHeight = widgetContainer.offsetHeight;
+    if (!isCollapsed) expandedHeight = shell.offsetHeight;
     isCollapsed = !isCollapsed;
     updateCollapse();
   });
@@ -494,20 +540,20 @@ export function setup(ctx: SpindleFrontendContext) {
     if (isFullscreen) {
       isFullscreen = false;
       if (preFullscreenState) {
-        widgetContainer.style.width = preFullscreenState.w + 'px';
-        widgetContainer.style.height = preFullscreenState.h + 'px';
+        shell.style.width = preFullscreenState.w + 'px';
+        shell.style.height = preFullscreenState.h + 'px';
         widget.moveTo(preFullscreenState.x, preFullscreenState.y);
       }
       fsBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>`;
       fsBtn.title = 'Fullscreen';
     } else {
-      preFullscreenState = { w: widgetContainer.offsetWidth, h: widgetContainer.offsetHeight, x: widget.getPosition().x, y: widget.getPosition().y };
+      preFullscreenState = { w: shell.offsetWidth, h: shell.offsetHeight, x: widget.getPosition().x, y: widget.getPosition().y };
       isFullscreen = true;
       isCollapsed = false;
       updateCollapse();
       const pad = isMobile ? 4 : 20;
-      widgetContainer.style.width = (window.innerWidth - pad * 2) + 'px';
-      widgetContainer.style.height = (window.innerHeight - pad * 2) + 'px';
+      shell.style.width = (window.innerWidth - pad * 2) + 'px';
+      shell.style.height = (window.innerHeight - pad * 2) + 'px';
       widget.moveTo(pad, pad);
       fsBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3"/></svg>`;
       fsBtn.title = 'Exit Fullscreen';
@@ -519,7 +565,7 @@ export function setup(ctx: SpindleFrontendContext) {
   window.addEventListener('resize', () => {
     if (!isFullscreen && !isCollapsed) {
       const pos = widget.getPosition();
-      const rect = widgetContainer.getBoundingClientRect();
+      const rect = shell.getBoundingClientRect();
       let nx = pos.x, ny = pos.y;
       if (nx + rect.width > window.innerWidth) nx = Math.max(0, window.innerWidth - rect.width - 16);
       if (ny + rect.height > window.innerHeight) ny = Math.max(0, window.innerHeight - rect.height - 16);
@@ -548,10 +594,14 @@ export function setup(ctx: SpindleFrontendContext) {
     const text = inputField.value.trim();
     if (!text) return;
     inputField.value = '';
+    inputField.rows = 1;
     ctx.sendToBackend({ type: 'user_message', content: text });
   };
   sendButton.addEventListener('click', sendMessage);
-  inputField.addEventListener('keydown', (e) => { if (e.key === 'Enter') sendMessage(); });
+  inputField.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+  });
+
   genButton.addEventListener('click', () => {
     if (isGenerating) return;
     ctx.sendToBackend({ type: 'trigger_generation' });
@@ -559,35 +609,46 @@ export function setup(ctx: SpindleFrontendContext) {
 
   // ── Append message ──
   function appendMessage(name: string, username: string, content: string, avatarUrl: string | null, isUser: boolean = false) {
+    const senderId = isUser ? '__user__' : name;
+    const isGrouped = senderId === lastSenderId;
+    lastSenderId = senderId;
+
     const wrap = document.createElement('div');
+    wrap.className = 'chatroom-msg';
     wrap.style.cssText = `
-      display:flex;gap:10px;align-items:flex-end;max-width:88%;
-      animation:msgPop .25s ease-out;
+      display:flex;gap:10px;align-items:flex-start;max-width:85%;
       ${isUser ? 'align-self:flex-end;flex-direction:row-reverse;' : 'align-self:flex-start;'}
+      ${isGrouped ? 'margin-top:2px;' : 'margin-top:12px;'}
     `;
 
-    // Avatar
+    // Avatar (only show if not grouped)
     const avatarWrap = document.createElement('div');
-    avatarWrap.style.cssText = 'flex-shrink:0;width:32px;height:32px;';
+    avatarWrap.style.cssText = `flex-shrink:0;width:32px;height:32px;${isGrouped ? 'visibility:hidden;' : ''}`;
     if (avatarUrl) {
       avatarWrap.innerHTML = `<img src="${avatarUrl}" style="width:32px;height:32px;border-radius:50%;object-fit:cover;">`;
     } else {
-      const initial = (isUser ? 'You' : name).charAt(0).toUpperCase();
-      const bg = isUser ? 'var(--lumiverse-primary)' : 'var(--lumiverse-fill-hover)';
-      const fg = isUser ? 'white' : 'var(--lumiverse-text)';
-      avatarWrap.innerHTML = `<div style="width:32px;height:32px;border-radius:50%;background:${bg};display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;color:${fg};">${initial}</div>`;
+      const displayName = isUser ? (userPersona?.name || 'You') : name;
+      const initial = displayName.charAt(0).toUpperCase();
+      const bg = isUser ? 'var(--lumiverse-primary)' : memberColor(name);
+      const fg = 'white';
+      avatarWrap.innerHTML = `<div style="width:32px;height:32px;border-radius:50%;background:${bg};display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:${fg};">${initial}</div>`;
     }
     wrap.appendChild(avatarWrap);
 
-    // Bubble column
+    // Content column
     const col = document.createElement('div');
-    col.style.cssText = `display:flex;flex-direction:column;gap:3px;min-width:0;${isUser ? 'align-items:flex-end;' : 'align-items:flex-start;'}`;
+    col.style.cssText = `display:flex;flex-direction:column;gap:2px;min-width:0;${isUser ? 'align-items:flex-end;' : 'align-items:flex-start;'}`;
 
-    const nameEl = document.createElement('div');
-    nameEl.style.cssText = 'font-size:11px;font-weight:600;color:var(--lumiverse-text-dim);padding:0 4px;';
-    nameEl.textContent = isUser ? 'You' : (username || name);
-    col.appendChild(nameEl);
+    // Name (only show if not grouped)
+    if (!isGrouped) {
+      const nameEl = document.createElement('div');
+      nameEl.style.cssText = 'font-size:11px;font-weight:700;padding:0 6px;';
+      nameEl.style.color = isUser ? 'var(--lumiverse-primary)' : memberColor(name);
+      nameEl.textContent = isUser ? (userPersona?.name || 'You') : (username || name);
+      col.appendChild(nameEl);
+    }
 
+    // Bubble
     const bubble = document.createElement('div');
     bubble.style.cssText = `
       padding:10px 14px;border-radius:18px;font-size:13.5px;
@@ -598,6 +659,14 @@ export function setup(ctx: SpindleFrontendContext) {
     `;
     bubble.textContent = content;
     col.appendChild(bubble);
+
+    // Timestamp
+    const timeEl = document.createElement('div');
+    timeEl.style.cssText = 'font-size:10px;color:var(--lumiverse-text-dim);padding:0 6px;';
+    const now = new Date();
+    timeEl.textContent = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    col.appendChild(timeEl);
+
     wrap.appendChild(col);
 
     messageList.insertBefore(wrap, loadingIndicator);
@@ -618,6 +687,10 @@ export function setup(ctx: SpindleFrontendContext) {
       intervalMin = payload.intervalMin;
       intervalMax = payload.intervalMax;
 
+      if (payload.userPersona) {
+        userPersona = payload.userPersona;
+      }
+
       connectionSelect.innerHTML = '<option value="">Default Active Connection</option>';
       if (payload.connections) {
         for (const conn of payload.connections) {
@@ -632,6 +705,7 @@ export function setup(ctx: SpindleFrontendContext) {
       if (payload.history) {
         messageList.innerHTML = '';
         messageList.appendChild(loadingIndicator);
+        lastSenderId = null;
         for (const msg of payload.history) {
           appendMessage(msg.name, msg.username, msg.content, msg.avatarUrl, msg.isUser);
         }
