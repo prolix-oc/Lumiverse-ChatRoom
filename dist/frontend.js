@@ -439,7 +439,7 @@ function setup(ctx) {
     messageList.insertBefore(msgEl, loadingIndicator);
     messageList.scrollTo({ top: messageList.scrollHeight, behavior: "smooth" });
   }
-  ctx.onBackendMessage((payload) => {
+  const unsubBackend = ctx.onBackendMessage((payload) => {
     if (payload.type === "settings_loaded") {
       intervalMinInput.value = payload.intervalMin.toString();
       intervalMaxInput.value = payload.intervalMax.toString();
@@ -478,8 +478,10 @@ function setup(ctx) {
   return () => {
     if (autoTimer)
       clearTimeout(autoTimer);
+    unsubBackend();
     widget.destroy();
     tab.destroy();
+    ctx.dom.cleanup();
   };
 }
 export {

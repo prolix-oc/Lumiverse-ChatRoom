@@ -515,7 +515,7 @@ export function setup(ctx: SpindleFrontendContext) {
     messageList.scrollTo({ top: messageList.scrollHeight, behavior: 'smooth' });
   }
 
-  ctx.onBackendMessage((payload: any) => {
+  const unsubBackend = ctx.onBackendMessage((payload: any) => {
     if (payload.type === 'settings_loaded') {
       intervalMinInput.value = payload.intervalMin.toString();
       intervalMaxInput.value = payload.intervalMax.toString();
@@ -558,7 +558,9 @@ export function setup(ctx: SpindleFrontendContext) {
 
   return () => {
     if (autoTimer) clearTimeout(autoTimer);
+    unsubBackend();
     widget.destroy();
     tab.destroy();
+    ctx.dom.cleanup();
   };
 }
