@@ -68,7 +68,7 @@ spindle.onFrontendMessage(async (payload, userId) => {
       const recentMessages = messages.slice(-contextLimit);
       const chatContext = recentMessages.map((m) => `${m.name || m.role}: ${m.content}`).join("\\n");
       spindle.log.info("Fetching council members...");
-      const councilMembers = await spindle.council.getMembers(userId);
+      const councilMembers = await spindle.council.getMembers({ userId });
       if (councilMembers.length === 0) {
         spindle.log.warn("No council members assigned");
         spindle.sendToFrontend({ type: "error", message: "No council members assigned." }, userId);

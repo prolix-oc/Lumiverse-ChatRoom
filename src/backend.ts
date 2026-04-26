@@ -89,7 +89,7 @@ spindle.onFrontendMessage(async (payload, userId) => {
 
       spindle.log.info('Fetching council members...');
       // Get council members
-      const councilMembers = await spindle.council.getMembers(userId);
+      const councilMembers = await spindle.council.getMembers({ userId });
       if (councilMembers.length === 0) {
         spindle.log.warn('No council members assigned');
         spindle.sendToFrontend({ type: 'error', message: 'No council members assigned.' }, userId);

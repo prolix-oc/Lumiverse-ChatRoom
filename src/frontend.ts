@@ -34,10 +34,17 @@ export function setup(ctx: SpindleFrontendContext) {
 
   function makeInteractive(el: HTMLElement) {
     const stop = (e: Event) => e.stopPropagation();
-    el.addEventListener('mousedown', stop);
-    el.addEventListener('touchstart', stop, { passive: true });
-    el.addEventListener('pointerdown', stop);
-    el.addEventListener('click', stop);
+    // Stop in both capture and bubble phases just in case the host uses capture
+    el.addEventListener('mousedown', stop, true);
+    el.addEventListener('mousedown', stop, false);
+    el.addEventListener('touchstart', stop, { passive: true, capture: true });
+    el.addEventListener('touchstart', stop, { passive: true, capture: false });
+    el.addEventListener('pointerdown', stop, true);
+    el.addEventListener('pointerdown', stop, false);
+    el.addEventListener('click', stop, true);
+    el.addEventListener('click', stop, false);
+    el.addEventListener('keydown', stop, true);
+    el.addEventListener('keydown', stop, false);
   }
 
   const toggleBtn = document.createElement('button');
@@ -301,6 +308,8 @@ export function setup(ctx: SpindleFrontendContext) {
   inputField.style.color = 'var(--lumiverse-text)';
   inputField.style.fontSize = '13px';
   inputField.style.outline = 'none';
+  inputField.style.userSelect = 'text';
+  inputField.style.pointerEvents = 'auto';
 
   // Make sure clicking focuses the input correctly inside a float widget
   inputField.addEventListener('pointerdown', () => inputField.focus());
@@ -545,5 +554,9 @@ export function setup(ctx: SpindleFrontendContext) {
     }
   });
 
-  ctx.sendToBackend({ type: 'load_settings' });
+  return () => {
+    if (autoTimer) clearTimeout(autoTimer);
+    widget.destroy();
+    tab.destroy();
+  };
 }
