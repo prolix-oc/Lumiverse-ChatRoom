@@ -34,6 +34,7 @@ spindle.onFrontendMessage(async (payload, userId) => {
     return;
   }
   if (payload.type === "user_message") {
+    spindle.log.info("Received user_message trigger");
     chatroomHistory.push({ role: "user", content: `[User Message in Chatroom]: ${payload.content}` });
     spindle.sendToFrontend({
       type: "new_message",
@@ -43,28 +44,37 @@ spindle.onFrontendMessage(async (payload, userId) => {
       avatarUrl: null,
       isUser: true
     }, userId);
+    payload.type = "trigger_generation";
   }
   if (payload.type === "trigger_generation") {
+    spindle.log.info("Starting generation trigger processing");
     if (!spindle.permissions.has("generation")) {
+      spindle.log.warn("Generation permission not granted");
       spindle.sendToFrontend({ type: "error", message: "Generation permission not granted" }, userId);
       return;
     }
     try {
+      spindle.log.info("Fetching active chat...");
       const activeChat = await spindle.chats.getActive(userId);
       if (!activeChat) {
+        spindle.log.warn("No active chat found");
         spindle.sendToFrontend({ type: "error", message: "No active chat to monitor." }, userId);
         return;
       }
+      spindle.log.info(`Active chat found: ${activeChat.id}. Fetching messages...`);
       const ctxLimitStr = await spindle.variables.global.get("chatroom_context_limit", userId);
       const contextLimit = ctxLimitStr ? parseInt(ctxLimitStr, 10) : 10;
       const messages = await spindle.chat.getMessages(activeChat.id, userId);
       const recentMessages = messages.slice(-contextLimit);
       const chatContext = recentMessages.map((m) => `${m.name || m.role}: ${m.content}`).join("\\n");
+      spindle.log.info("Fetching council members...");
       const councilMembers = await spindle.council.getMembers(userId);
       if (councilMembers.length === 0) {
+        spindle.log.warn("No council members assigned");
         spindle.sendToFrontend({ type: "error", message: "No council members assigned." }, userId);
         return;
       }
+      spindle.log.info("Fetching active persona...");
       const activePersona = await spindle.personas.getActive(userId);
       const personaName = activePersona ? activePersona.name : "The User";
       const councilContext = councilMembers.map((m) => `- ${m.name}: ${m.role}. Personality: ${m.personality}`).join("\\n");
@@ -88,6 +98,7 @@ MemberName (Username): The message content
         { role: "system", content: systemPrompt },
         ...chatroomHistory.slice(-20)
       ];
+      spindle.log.info("Resolving connection profile...");
       const connId = await spindle.variables.global.get("chatroom_connection_id", userId);
       let conn = null;
       if (connId) {
@@ -98,9 +109,11 @@ MemberName (Username): The message content
         conn = conns.find((c) => c.is_default) || conns[0];
       }
       if (!conn) {
+        spindle.log.error("No connection profile available");
         spindle.sendToFrontend({ type: "error", message: "No connection profile available." }, userId);
         return;
       }
+      spindle.log.info(`Generating using connection: ${conn.id} (${conn.provider} - ${conn.model})`);
       spindle.sendToFrontend({ type: "generation_started" }, userId);
       const stream = spindle.generate.rawStream({
         provider: conn.provider,
@@ -116,6 +129,7 @@ MemberName (Username): The message content
           fullText = chunk.content || fullText;
         }
       }
+      spindle.log.info("Generation stream completed. Processing results...");
       chatroomHistory.push({ role: "assistant", content: fullText });
       const chunks = fullText.split("---");
       for (const chunk of chunks) {
@@ -141,8 +155,10 @@ MemberName (Username): The message content
           isUser: false
         }, userId);
       }
+      spindle.log.info("Successfully dispatched messages to frontend.");
       spindle.sendToFrontend({ type: "generation_ended" }, userId);
     } catch (e) {
+      spindle.log.error(`Generation error: ${e.message || String(e)}`);
       spindle.sendToFrontend({ type: "generation_ended" }, userId);
       spindle.sendToFrontend({ type: "error", message: e.message || String(e) }, userId);
     }
