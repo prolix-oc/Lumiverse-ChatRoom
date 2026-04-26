@@ -462,157 +462,6 @@ function setup(ctx) {
   let unreadCount = 0;
   let lastSenderId = null;
   let userPersona = null;
-  let allMessages = [];
-  const msgHeightCache = new Map;
-  const ESTIMATED_MSG_HEIGHT = 60;
-  const VIRTUAL_OVERSCAN = 12;
-  let virtualRange = { start: 0, end: -1 };
-  let isStickToBottom = true;
-  function isGroupedAt(index) {
-    if (index <= 0)
-      return false;
-    const curr = allMessages[index];
-    const prev = allMessages[index - 1];
-    const currId = curr.isUser ? "__user__" : curr.name;
-    const prevId = prev.isUser ? "__user__" : prev.name;
-    return currId === prevId;
-  }
-  function createMessageElement(index) {
-    const msg = allMessages[index];
-    const isGrouped = isGroupedAt(index);
-    const isUser = msg.isUser;
-    const wrap = document.createElement("div");
-    wrap.className = "chatroom-msg";
-    wrap.style.cssText = `
-      display:flex;gap:10px;align-items:flex-start;max-width:85%;
-      ${isUser ? "align-self:flex-end;flex-direction:row-reverse;" : "align-self:flex-start;"}
-      ${isGrouped ? "margin-top:2px;" : "margin-top:12px;"}
-    `;
-    const avatarWrap = document.createElement("div");
-    avatarWrap.style.cssText = `flex-shrink:0;width:32px;height:32px;${isGrouped ? "visibility:hidden;" : ""}`;
-    if (msg.avatarUrl) {
-      avatarWrap.innerHTML = `<img src="${msg.avatarUrl}" style="width:32px;height:32px;border-radius:50%;object-fit:cover;">`;
-    } else {
-      const displayName = isUser ? userPersona?.name || "You" : msg.name;
-      const initial = displayName.charAt(0).toUpperCase();
-      const bg = isUser ? "var(--lumiverse-primary)" : memberColor(msg.name);
-      const fg = "white";
-      avatarWrap.innerHTML = `<div style="width:32px;height:32px;border-radius:50%;background:${bg};display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:${fg};">${initial}</div>`;
-    }
-    wrap.appendChild(avatarWrap);
-    const col = document.createElement("div");
-    col.style.cssText = `display:flex;flex-direction:column;gap:2px;min-width:0;${isUser ? "align-items:flex-end;" : "align-items:flex-start;"}`;
-    if (!isGrouped) {
-      const nameEl = document.createElement("div");
-      nameEl.style.cssText = "font-size:11px;font-weight:700;padding:0 6px;";
-      nameEl.style.color = isUser ? "var(--lumiverse-primary)" : memberColor(msg.name);
-      nameEl.textContent = isUser ? userPersona?.name || "You" : msg.username || msg.name;
-      col.appendChild(nameEl);
-    }
-    const bubble = document.createElement("div");
-    bubble.style.cssText = `
-      padding:10px 14px;border-radius:18px;font-size:13.5px;
-      line-height:1.45;word-break:break-word;
-      ${isUser ? "background:var(--lumiverse-primary);color:white;border-bottom-right-radius:4px;" : "background:var(--lumiverse-fill-subtle);color:var(--lumiverse-text);border-bottom-left-radius:4px;"}
-    `;
-    bubble.textContent = msg.content;
-    col.appendChild(bubble);
-    const timeEl = document.createElement("div");
-    timeEl.style.cssText = "font-size:10px;color:var(--lumiverse-text-dim);padding:0 6px;";
-    const ts = new Date(msg.timestamp);
-    timeEl.textContent = ts.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-    col.appendChild(timeEl);
-    wrap.appendChild(col);
-    return wrap;
-  }
-  function syncVirtualWindow(shouldScrollToBottom = false) {
-    if (allMessages.length === 0) {
-      topSpacer.style.height = "0px";
-      bottomSpacer.style.height = "0px";
-      virtualContent.innerHTML = "";
-      virtualRange = { start: 0, end: -1 };
-      return;
-    }
-    const scrollTop = messageList.scrollTop;
-    const viewportHeight = messageList.clientHeight;
-    let accumulated = 0;
-    let startIdx = 0;
-    for (let i = 0;i < allMessages.length; i++) {
-      const h = msgHeightCache.get(i) || ESTIMATED_MSG_HEIGHT;
-      if (accumulated + h > scrollTop - VIRTUAL_OVERSCAN * ESTIMATED_MSG_HEIGHT) {
-        startIdx = i;
-        break;
-      }
-      accumulated += h;
-    }
-    let visibleH = 0;
-    let endIdx = startIdx;
-    for (let i = startIdx;i < allMessages.length; i++) {
-      const h = msgHeightCache.get(i) || ESTIMATED_MSG_HEIGHT;
-      visibleH += h;
-      endIdx = i;
-      if (visibleH > viewportHeight + VIRTUAL_OVERSCAN * ESTIMATED_MSG_HEIGHT)
-        break;
-    }
-    let topHeight = 0;
-    for (let i = 0;i < startIdx; i++) {
-      topHeight += msgHeightCache.get(i) || ESTIMATED_MSG_HEIGHT;
-    }
-    let bottomHeight = 0;
-    for (let i = endIdx + 1;i < allMessages.length; i++) {
-      bottomHeight += msgHeightCache.get(i) || ESTIMATED_MSG_HEIGHT;
-    }
-    topSpacer.style.height = topHeight + "px";
-    bottomSpacer.style.height = bottomHeight + "px";
-    const existing = new Map;
-    for (const child of Array.from(virtualContent.children)) {
-      const idx = parseInt(child.dataset.vindex || "-1", 10);
-      if (idx >= 0)
-        existing.set(idx, child);
-    }
-    for (const [idx, el] of existing) {
-      if (idx < startIdx || idx > endIdx) {
-        virtualContent.removeChild(el);
-      }
-    }
-    for (let i = startIdx;i <= endIdx; i++) {
-      if (!existing.has(i)) {
-        const el = createMessageElement(i);
-        el.dataset.vindex = String(i);
-        let inserted = false;
-        for (const child of Array.from(virtualContent.children)) {
-          const childIdx = parseInt(child.dataset.vindex || "999999", 10);
-          if (childIdx > i) {
-            virtualContent.insertBefore(el, child);
-            inserted = true;
-            break;
-          }
-        }
-        if (!inserted) {
-          virtualContent.appendChild(el);
-        }
-      }
-    }
-    for (const child of Array.from(virtualContent.children)) {
-      const idx = parseInt(child.dataset.vindex || "-1", 10);
-      if (idx >= startIdx && idx <= endIdx) {
-        msgHeightCache.set(idx, child.offsetHeight);
-      }
-    }
-    virtualRange = { start: startIdx, end: endIdx };
-    if (shouldScrollToBottom) {
-      messageList.scrollTo({ top: messageList.scrollHeight, behavior: "smooth" });
-    }
-  }
-  let scrollRaf = null;
-  messageList.addEventListener("scroll", () => {
-    isStickToBottom = messageList.scrollTop + messageList.clientHeight >= messageList.scrollHeight - 60;
-    if (scrollRaf)
-      cancelAnimationFrame(scrollRaf);
-    scrollRaf = requestAnimationFrame(() => {
-      syncVirtualWindow(false);
-    });
-  });
   function hashHue(str) {
     let h = 0;
     for (let i = 0;i < str.length; i++)
@@ -773,6 +622,157 @@ function setup(ctx) {
   messageList.insertBefore(virtualContent, loadingIndicator);
   messageList.insertBefore(bottomSpacer, loadingIndicator);
   body.appendChild(messageList);
+  let allMessages = [];
+  const msgHeightCache = new Map;
+  const ESTIMATED_MSG_HEIGHT = 60;
+  const VIRTUAL_OVERSCAN = 12;
+  let virtualRange = { start: 0, end: -1 };
+  let isStickToBottom = true;
+  function isGroupedAt(index) {
+    if (index <= 0)
+      return false;
+    const curr = allMessages[index];
+    const prev = allMessages[index - 1];
+    const currId = curr.isUser ? "__user__" : curr.name;
+    const prevId = prev.isUser ? "__user__" : prev.name;
+    return currId === prevId;
+  }
+  function createMessageElement(index) {
+    const msg = allMessages[index];
+    const isGrouped = isGroupedAt(index);
+    const isUser = msg.isUser;
+    const wrap = document.createElement("div");
+    wrap.className = "chatroom-msg";
+    wrap.style.cssText = `
+      display:flex;gap:10px;align-items:flex-start;max-width:85%;
+      ${isUser ? "align-self:flex-end;flex-direction:row-reverse;" : "align-self:flex-start;"}
+      ${isGrouped ? "margin-top:2px;" : "margin-top:12px;"}
+    `;
+    const avatarWrap = document.createElement("div");
+    avatarWrap.style.cssText = `flex-shrink:0;width:32px;height:32px;${isGrouped ? "visibility:hidden;" : ""}`;
+    if (msg.avatarUrl) {
+      avatarWrap.innerHTML = `<img src="${msg.avatarUrl}" style="width:32px;height:32px;border-radius:50%;object-fit:cover;">`;
+    } else {
+      const displayName = isUser ? userPersona?.name || "You" : msg.name;
+      const initial = displayName.charAt(0).toUpperCase();
+      const bg = isUser ? "var(--lumiverse-primary)" : memberColor(msg.name);
+      const fg = "white";
+      avatarWrap.innerHTML = `<div style="width:32px;height:32px;border-radius:50%;background:${bg};display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:${fg};">${initial}</div>`;
+    }
+    wrap.appendChild(avatarWrap);
+    const col = document.createElement("div");
+    col.style.cssText = `display:flex;flex-direction:column;gap:2px;min-width:0;${isUser ? "align-items:flex-end;" : "align-items:flex-start;"}`;
+    if (!isGrouped) {
+      const nameEl = document.createElement("div");
+      nameEl.style.cssText = "font-size:11px;font-weight:700;padding:0 6px;";
+      nameEl.style.color = isUser ? "var(--lumiverse-primary)" : memberColor(msg.name);
+      nameEl.textContent = isUser ? userPersona?.name || "You" : msg.username || msg.name;
+      col.appendChild(nameEl);
+    }
+    const bubble = document.createElement("div");
+    bubble.style.cssText = `
+      padding:10px 14px;border-radius:18px;font-size:13.5px;
+      line-height:1.45;word-break:break-word;
+      ${isUser ? "background:var(--lumiverse-primary);color:white;border-bottom-right-radius:4px;" : "background:var(--lumiverse-fill-subtle);color:var(--lumiverse-text);border-bottom-left-radius:4px;"}
+    `;
+    bubble.textContent = msg.content;
+    col.appendChild(bubble);
+    const timeEl = document.createElement("div");
+    timeEl.style.cssText = "font-size:10px;color:var(--lumiverse-text-dim);padding:0 6px;";
+    const ts = new Date(msg.timestamp);
+    timeEl.textContent = ts.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    col.appendChild(timeEl);
+    wrap.appendChild(col);
+    return wrap;
+  }
+  function syncVirtualWindow(shouldScrollToBottom = false) {
+    if (allMessages.length === 0) {
+      topSpacer.style.height = "0px";
+      bottomSpacer.style.height = "0px";
+      virtualContent.innerHTML = "";
+      virtualRange = { start: 0, end: -1 };
+      return;
+    }
+    const scrollTop = messageList.scrollTop;
+    const viewportHeight = messageList.clientHeight;
+    let accumulated = 0;
+    let startIdx = 0;
+    for (let i = 0;i < allMessages.length; i++) {
+      const h = msgHeightCache.get(i) || ESTIMATED_MSG_HEIGHT;
+      if (accumulated + h > scrollTop - VIRTUAL_OVERSCAN * ESTIMATED_MSG_HEIGHT) {
+        startIdx = i;
+        break;
+      }
+      accumulated += h;
+    }
+    let visibleH = 0;
+    let endIdx = startIdx;
+    for (let i = startIdx;i < allMessages.length; i++) {
+      const h = msgHeightCache.get(i) || ESTIMATED_MSG_HEIGHT;
+      visibleH += h;
+      endIdx = i;
+      if (visibleH > viewportHeight + VIRTUAL_OVERSCAN * ESTIMATED_MSG_HEIGHT)
+        break;
+    }
+    let topHeight = 0;
+    for (let i = 0;i < startIdx; i++) {
+      topHeight += msgHeightCache.get(i) || ESTIMATED_MSG_HEIGHT;
+    }
+    let bottomHeight = 0;
+    for (let i = endIdx + 1;i < allMessages.length; i++) {
+      bottomHeight += msgHeightCache.get(i) || ESTIMATED_MSG_HEIGHT;
+    }
+    topSpacer.style.height = topHeight + "px";
+    bottomSpacer.style.height = bottomHeight + "px";
+    const existing = new Map;
+    for (const child of Array.from(virtualContent.children)) {
+      const idx = parseInt(child.dataset.vindex || "-1", 10);
+      if (idx >= 0)
+        existing.set(idx, child);
+    }
+    for (const [idx, el] of existing) {
+      if (idx < startIdx || idx > endIdx) {
+        virtualContent.removeChild(el);
+      }
+    }
+    for (let i = startIdx;i <= endIdx; i++) {
+      if (!existing.has(i)) {
+        const el = createMessageElement(i);
+        el.dataset.vindex = String(i);
+        let inserted = false;
+        for (const child of Array.from(virtualContent.children)) {
+          const childIdx = parseInt(child.dataset.vindex || "999999", 10);
+          if (childIdx > i) {
+            virtualContent.insertBefore(el, child);
+            inserted = true;
+            break;
+          }
+        }
+        if (!inserted) {
+          virtualContent.appendChild(el);
+        }
+      }
+    }
+    for (const child of Array.from(virtualContent.children)) {
+      const idx = parseInt(child.dataset.vindex || "-1", 10);
+      if (idx >= startIdx && idx <= endIdx) {
+        msgHeightCache.set(idx, child.offsetHeight);
+      }
+    }
+    virtualRange = { start: startIdx, end: endIdx };
+    if (shouldScrollToBottom) {
+      messageList.scrollTo({ top: messageList.scrollHeight, behavior: "smooth" });
+    }
+  }
+  let scrollRaf = null;
+  messageList.addEventListener("scroll", () => {
+    isStickToBottom = messageList.scrollTop + messageList.clientHeight >= messageList.scrollHeight - 60;
+    if (scrollRaf)
+      cancelAnimationFrame(scrollRaf);
+    scrollRaf = requestAnimationFrame(() => {
+      syncVirtualWindow(false);
+    });
+  });
   const controls = document.createElement("div");
   controls.style.cssText = `
     padding:12px 16px;border-top:1px solid var(--lumiverse-border);

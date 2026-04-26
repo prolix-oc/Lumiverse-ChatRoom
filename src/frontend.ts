@@ -586,6 +586,197 @@ export function setup(ctx: SpindleFrontendContext) {
   let lastSenderId: string | null = null;
   let userPersona: { name: string; avatarUrl: string | null } | null = null;
 
+  function hashHue(str: string) {
+    let h = 0;
+    for (let i = 0; i < str.length; i++) h = str.charCodeAt(i) + ((h << 5) - h);
+    return Math.abs(h) % 360;
+  }
+  function memberColor(name: string) {
+    const hue = hashHue(name);
+    return `hsl(${hue}, 70%, 60%)`;
+  }
+
+  // The host's widget container is the outer positioned wrapper around widget.root.
+  // With chromeless: true it's typically widget.root's immediate parent.
+  const shell = (widget.root.parentElement as HTMLElement) || widget.root;
+
+  // Find the actual outermost host wrapper (the one the host positions/moves)
+  function getHostWrapper(): HTMLElement {
+    let el: HTMLElement = shell;
+    while (el.parentElement && el.parentElement !== document.body) {
+      el = el.parentElement;
+    }
+    return el;
+  }
+  const hostWrapper = getHostWrapper();
+
+  // Apply our chrome to the host wrapper, and make widget.root fill it.
+  widget.root.style.cssText = `
+    width:100%;height:100%;
+    display:flex;flex-direction:column;
+    overflow:hidden;
+  `;
+
+  shell.style.cssText = `
+    display:flex;flex-direction:column;
+    width:100%;height:100%;
+    background:var(--lumiverse-bg);
+    color:var(--lumiverse-text);
+    border-radius:20px;
+    box-shadow:0 20px 60px rgba(0,0,0,0.3), 0 4px 12px rgba(0,0,0,0.15), inset 0 1px 0 rgba(255,255,255,0.05);
+    border:1px solid var(--lumiverse-border);
+    overflow:hidden;
+    font-family:var(--lumiverse-font-family, system-ui, -apple-system, sans-serif);
+    position:relative;
+  `;
+
+  // ── Header ──
+  const header = document.createElement('div');
+  header.style.cssText = `
+    padding:14px 18px;
+    background:linear-gradient(180deg, var(--lumiverse-fill-subtle) 0%, var(--lumiverse-fill) 100%);
+    border-bottom:1px solid var(--lumiverse-border);
+    display:flex;align-items:center;gap:12px;
+    flex-shrink:0;cursor:grab;user-select:none;
+    position:relative;
+  `;
+
+  const headerLeft = document.createElement('div');
+  headerLeft.style.cssText = 'display:flex;align-items:center;gap:10px;flex:1;min-width:0;';
+
+  const headerIcon = document.createElement('div');
+  headerIcon.innerHTML = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>`;
+  headerIcon.style.cssText = 'display:flex;color:var(--lumiverse-primary);flex-shrink:0;';
+
+  const headerTextWrap = document.createElement('div');
+  headerTextWrap.style.cssText = 'display:flex;flex-direction:column;gap:1px;min-width:0;';
+
+  const headerTitle = document.createElement('span');
+  headerTitle.textContent = 'Council Chatroom';
+  headerTitle.style.cssText = 'font-weight:700;font-size:14px;color:var(--lumiverse-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+
+  const headerSubtitle = document.createElement('span');
+  headerSubtitle.textContent = 'Watching the story unfold…';
+  headerSubtitle.style.cssText = 'font-size:11px;color:var(--lumiverse-text-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+
+  headerTextWrap.appendChild(headerTitle);
+  headerTextWrap.appendChild(headerSubtitle);
+
+  const badge = document.createElement('span');
+  badge.style.cssText = `
+    display:none;background:var(--lumiverse-primary);color:white;
+    font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px;
+    min-width:16px;text-align:center;flex-shrink:0;margin-left:4px;
+  `;
+
+  headerLeft.appendChild(headerIcon);
+  headerLeft.appendChild(headerTextWrap);
+  headerLeft.appendChild(badge);
+
+  const headerActions = document.createElement('div');
+  headerActions.style.cssText = 'display:flex;align-items:center;gap:2px;flex-shrink:0;';
+
+  function iconBtn(html: string, title: string) {
+    const b = document.createElement('button');
+    b.innerHTML = html;
+    b.title = title;
+    b.style.cssText = `
+      display:flex;align-items:center;justify-content:center;
+      width:28px;height:28px;border-radius:var(--lumiverse-radius,6px);
+      background:transparent;border:none;color:var(--lumiverse-text-muted);
+      cursor:pointer;transition:all .15s;
+    `;
+    b.addEventListener('mouseenter', () => { b.style.background = 'var(--lumiverse-fill-hover)'; b.style.color = 'var(--lumiverse-text)'; });
+    b.addEventListener('mouseleave', () => { b.style.background = 'transparent'; b.style.color = 'var(--lumiverse-text-muted)'; });
+    b.addEventListener('click', (e) => e.stopPropagation());
+    return b;
+  }
+
+  const fsBtn = iconBtn(
+    `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>`,
+    'Fullscreen'
+  );
+  const collapseBtn = iconBtn(
+    `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>`,
+    'Collapse'
+  );
+  const hideBtn = iconBtn(
+    `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`,
+    'Hide'
+  );
+
+  headerActions.appendChild(fsBtn);
+  headerActions.appendChild(collapseBtn);
+  headerActions.appendChild(hideBtn);
+  header.appendChild(headerLeft);
+  header.appendChild(headerActions);
+  widget.root.appendChild(header);
+
+  // Drag
+  let isDragging = false;
+  let dragStart = { x: 0, y: 0, wx: 0, wy: 0 };
+  header.addEventListener('mousedown', (e) => {
+    if ((e.target as HTMLElement).closest('button')) return;
+    e.preventDefault();
+    e.stopPropagation();
+    isDragging = true;
+    header.style.cursor = 'grabbing';
+    const pos = widget.getPosition();
+    dragStart = { x: e.clientX, y: e.clientY, wx: pos.x, wy: pos.y };
+  });
+  document.addEventListener('mousemove', (e) => {
+    if (!isDragging) return;
+    widget.moveTo(dragStart.wx + (e.clientX - dragStart.x), dragStart.wy + (e.clientY - dragStart.y));
+  });
+  document.addEventListener('mouseup', () => {
+    if (!isDragging) return;
+    isDragging = false;
+    header.style.cursor = 'grab';
+    clampWidgetToViewport();
+    persistWidgetState();
+  });
+
+  // ── Body ──
+  const body = document.createElement('div');
+  body.style.cssText = 'flex:1;display:flex;flex-direction:column;overflow:hidden;min-height:0;';
+
+  const messageList = document.createElement('div');
+  messageList.className = 'chatroom-scroll';
+  messageList.style.cssText = `
+    flex:1;overflow-y:auto;overflow-x:hidden;
+    padding:16px;display:flex;flex-direction:column;gap:2px;min-height:0;
+  `;
+
+  const loadingIndicator = document.createElement('div');
+  loadingIndicator.className = 'chatroom-msg';
+  loadingIndicator.style.cssText = `
+    display:none;padding:10px 16px;align-items:center;gap:8px;
+    font-size:12px;color:var(--lumiverse-text-dim);font-style:italic;
+  `;
+  loadingIndicator.innerHTML = `
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="animation:spin 1.5s linear infinite;flex-shrink:0;">
+      <line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/>
+      <line x1="4.93" y1="4.93" x2="7.76" y2="7.76"/><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"/>
+      <line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/>
+      <line x1="4.93" y1="19.07" x2="7.76" y2="16.24"/><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"/>
+    </svg>
+    <span>Council is typing…</span>
+  `;
+  messageList.appendChild(loadingIndicator);
+
+  // ── Virtual List Structure ──
+  const topSpacer = document.createElement('div');
+  topSpacer.style.cssText = 'flex-shrink:0;';
+  const virtualContent = document.createElement('div');
+  virtualContent.style.cssText = 'display:flex;flex-direction:column;gap:2px;min-height:0;';
+  const bottomSpacer = document.createElement('div');
+  bottomSpacer.style.cssText = 'flex-shrink:0;';
+  messageList.insertBefore(topSpacer, loadingIndicator);
+  messageList.insertBefore(virtualContent, loadingIndicator);
+  messageList.insertBefore(bottomSpacer, loadingIndicator);
+
+  body.appendChild(messageList);
+
   // ── Virtual Message List State ──
   interface ChatMessage {
     name: string;
@@ -778,197 +969,6 @@ export function setup(ctx: SpindleFrontendContext) {
       syncVirtualWindow(false);
     });
   });
-
-  function hashHue(str: string) {
-    let h = 0;
-    for (let i = 0; i < str.length; i++) h = str.charCodeAt(i) + ((h << 5) - h);
-    return Math.abs(h) % 360;
-  }
-  function memberColor(name: string) {
-    const hue = hashHue(name);
-    return `hsl(${hue}, 70%, 60%)`;
-  }
-
-  // The host's widget container is the outer positioned wrapper around widget.root.
-  // With chromeless: true it's typically widget.root's immediate parent.
-  const shell = (widget.root.parentElement as HTMLElement) || widget.root;
-
-  // Find the actual outermost host wrapper (the one the host positions/moves)
-  function getHostWrapper(): HTMLElement {
-    let el: HTMLElement = shell;
-    while (el.parentElement && el.parentElement !== document.body) {
-      el = el.parentElement;
-    }
-    return el;
-  }
-  const hostWrapper = getHostWrapper();
-
-  // Apply our chrome to the host wrapper, and make widget.root fill it.
-  widget.root.style.cssText = `
-    width:100%;height:100%;
-    display:flex;flex-direction:column;
-    overflow:hidden;
-  `;
-
-  shell.style.cssText = `
-    display:flex;flex-direction:column;
-    width:100%;height:100%;
-    background:var(--lumiverse-bg);
-    color:var(--lumiverse-text);
-    border-radius:20px;
-    box-shadow:0 20px 60px rgba(0,0,0,0.3), 0 4px 12px rgba(0,0,0,0.15), inset 0 1px 0 rgba(255,255,255,0.05);
-    border:1px solid var(--lumiverse-border);
-    overflow:hidden;
-    font-family:var(--lumiverse-font-family, system-ui, -apple-system, sans-serif);
-    position:relative;
-  `;
-
-  // ── Header ──
-  const header = document.createElement('div');
-  header.style.cssText = `
-    padding:14px 18px;
-    background:linear-gradient(180deg, var(--lumiverse-fill-subtle) 0%, var(--lumiverse-fill) 100%);
-    border-bottom:1px solid var(--lumiverse-border);
-    display:flex;align-items:center;gap:12px;
-    flex-shrink:0;cursor:grab;user-select:none;
-    position:relative;
-  `;
-
-  const headerLeft = document.createElement('div');
-  headerLeft.style.cssText = 'display:flex;align-items:center;gap:10px;flex:1;min-width:0;';
-
-  const headerIcon = document.createElement('div');
-  headerIcon.innerHTML = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>`;
-  headerIcon.style.cssText = 'display:flex;color:var(--lumiverse-primary);flex-shrink:0;';
-
-  const headerTextWrap = document.createElement('div');
-  headerTextWrap.style.cssText = 'display:flex;flex-direction:column;gap:1px;min-width:0;';
-
-  const headerTitle = document.createElement('span');
-  headerTitle.textContent = 'Council Chatroom';
-  headerTitle.style.cssText = 'font-weight:700;font-size:14px;color:var(--lumiverse-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
-
-  const headerSubtitle = document.createElement('span');
-  headerSubtitle.textContent = 'Watching the story unfold…';
-  headerSubtitle.style.cssText = 'font-size:11px;color:var(--lumiverse-text-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
-
-  headerTextWrap.appendChild(headerTitle);
-  headerTextWrap.appendChild(headerSubtitle);
-
-  const badge = document.createElement('span');
-  badge.style.cssText = `
-    display:none;background:var(--lumiverse-primary);color:white;
-    font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px;
-    min-width:16px;text-align:center;flex-shrink:0;margin-left:4px;
-  `;
-
-  headerLeft.appendChild(headerIcon);
-  headerLeft.appendChild(headerTextWrap);
-  headerLeft.appendChild(badge);
-
-  const headerActions = document.createElement('div');
-  headerActions.style.cssText = 'display:flex;align-items:center;gap:2px;flex-shrink:0;';
-
-  function iconBtn(html: string, title: string) {
-    const b = document.createElement('button');
-    b.innerHTML = html;
-    b.title = title;
-    b.style.cssText = `
-      display:flex;align-items:center;justify-content:center;
-      width:28px;height:28px;border-radius:var(--lumiverse-radius,6px);
-      background:transparent;border:none;color:var(--lumiverse-text-muted);
-      cursor:pointer;transition:all .15s;
-    `;
-    b.addEventListener('mouseenter', () => { b.style.background = 'var(--lumiverse-fill-hover)'; b.style.color = 'var(--lumiverse-text)'; });
-    b.addEventListener('mouseleave', () => { b.style.background = 'transparent'; b.style.color = 'var(--lumiverse-text-muted)'; });
-    b.addEventListener('click', (e) => e.stopPropagation());
-    return b;
-  }
-
-  const fsBtn = iconBtn(
-    `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>`,
-    'Fullscreen'
-  );
-  const collapseBtn = iconBtn(
-    `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>`,
-    'Collapse'
-  );
-  const hideBtn = iconBtn(
-    `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`,
-    'Hide'
-  );
-
-  headerActions.appendChild(fsBtn);
-  headerActions.appendChild(collapseBtn);
-  headerActions.appendChild(hideBtn);
-  header.appendChild(headerLeft);
-  header.appendChild(headerActions);
-  widget.root.appendChild(header);
-
-  // Drag
-  let isDragging = false;
-  let dragStart = { x: 0, y: 0, wx: 0, wy: 0 };
-  header.addEventListener('mousedown', (e) => {
-    if ((e.target as HTMLElement).closest('button')) return;
-    e.preventDefault();
-    e.stopPropagation();
-    isDragging = true;
-    header.style.cursor = 'grabbing';
-    const pos = widget.getPosition();
-    dragStart = { x: e.clientX, y: e.clientY, wx: pos.x, wy: pos.y };
-  });
-  document.addEventListener('mousemove', (e) => {
-    if (!isDragging) return;
-    widget.moveTo(dragStart.wx + (e.clientX - dragStart.x), dragStart.wy + (e.clientY - dragStart.y));
-  });
-  document.addEventListener('mouseup', () => {
-    if (!isDragging) return;
-    isDragging = false;
-    header.style.cursor = 'grab';
-    clampWidgetToViewport();
-    persistWidgetState();
-  });
-
-  // ── Body ──
-  const body = document.createElement('div');
-  body.style.cssText = 'flex:1;display:flex;flex-direction:column;overflow:hidden;min-height:0;';
-
-  const messageList = document.createElement('div');
-  messageList.className = 'chatroom-scroll';
-  messageList.style.cssText = `
-    flex:1;overflow-y:auto;overflow-x:hidden;
-    padding:16px;display:flex;flex-direction:column;gap:2px;min-height:0;
-  `;
-
-  const loadingIndicator = document.createElement('div');
-  loadingIndicator.className = 'chatroom-msg';
-  loadingIndicator.style.cssText = `
-    display:none;padding:10px 16px;align-items:center;gap:8px;
-    font-size:12px;color:var(--lumiverse-text-dim);font-style:italic;
-  `;
-  loadingIndicator.innerHTML = `
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="animation:spin 1.5s linear infinite;flex-shrink:0;">
-      <line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/>
-      <line x1="4.93" y1="4.93" x2="7.76" y2="7.76"/><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"/>
-      <line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/>
-      <line x1="4.93" y1="19.07" x2="7.76" y2="16.24"/><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"/>
-    </svg>
-    <span>Council is typing…</span>
-  `;
-  messageList.appendChild(loadingIndicator);
-
-  // ── Virtual List Structure ──
-  const topSpacer = document.createElement('div');
-  topSpacer.style.cssText = 'flex-shrink:0;';
-  const virtualContent = document.createElement('div');
-  virtualContent.style.cssText = 'display:flex;flex-direction:column;gap:2px;min-height:0;';
-  const bottomSpacer = document.createElement('div');
-  bottomSpacer.style.cssText = 'flex-shrink:0;';
-  messageList.insertBefore(topSpacer, loadingIndicator);
-  messageList.insertBefore(virtualContent, loadingIndicator);
-  messageList.insertBefore(bottomSpacer, loadingIndicator);
-
-  body.appendChild(messageList);
 
   // ── Controls ──
   const controls = document.createElement('div');
