@@ -401,6 +401,7 @@ function setup(ctx) {
     display:${isMobile ? "none" : "flex"};
     align-items:flex-end;justify-content:flex-end;
     padding:0 4px 4px 0;
+    touch-action:none;
   `;
   resizeHandle.innerHTML = `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="opacity:.3;"><polyline points="22 12 22 22 12 22"/></svg>`;
   widget.root.appendChild(resizeHandle);
@@ -419,24 +420,11 @@ function setup(ctx) {
     isResizing = true;
     document.body.style.cursor = "nwse-resize";
   }
-  resizeHandle.addEventListener("mousedown", (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    startResize(e.clientX, e.clientY);
-  });
-  resizeHandle.addEventListener("touchstart", (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const t = e.touches[0];
-    startResize(t.clientX, t.clientY);
-  }, { passive: false });
-  function onResizeMove(e) {
+  function onResizePointerMove(e) {
     if (!isResizing)
       return;
-    const cx = "touches" in e ? e.touches[0].clientX : e.clientX;
-    const cy = "touches" in e ? e.touches[0].clientY : e.clientY;
-    const nw = Math.max(WIDGET_MIN_W, Math.min(WIDGET_MAX_W, resizeStart.w + (cx - resizeStart.x)));
-    const nh = Math.max(WIDGET_MIN_H, Math.min(WIDGET_MAX_H, resizeStart.h + (cy - resizeStart.y)));
+    const nw = Math.max(WIDGET_MIN_W, Math.min(WIDGET_MAX_W, resizeStart.w + (e.clientX - resizeStart.x)));
+    const nh = Math.max(WIDGET_MIN_H, Math.min(WIDGET_MAX_H, resizeStart.h + (e.clientY - resizeStart.y)));
     shell.style.width = nw + "px";
     shell.style.height = nh + "px";
     if (isCollapsed) {
@@ -450,7 +438,7 @@ function setup(ctx) {
       rafId = null;
     });
   }
-  function onResizeEnd() {
+  function onResizePointerUp(e) {
     if (!isResizing)
       return;
     isResizing = false;
@@ -459,13 +447,22 @@ function setup(ctx) {
       cancelAnimationFrame(rafId);
       rafId = null;
     }
-    const ev = new PointerEvent("pointerup", { bubbles: true, cancelable: true });
-    widget.root.dispatchEvent(ev);
+    try {
+      resizeHandle.releasePointerCapture(e.pointerId);
+    } catch (_) {}
   }
-  document.addEventListener("mousemove", onResizeMove);
-  document.addEventListener("mouseup", onResizeEnd);
-  document.addEventListener("touchmove", onResizeMove, { passive: false });
-  document.addEventListener("touchend", onResizeEnd);
+  function onWindowPointerDown(e) {
+    const target = e.target;
+    if (!target?.closest?.(".chatroom-resize"))
+      return;
+    e.stopPropagation();
+    startResize(e.clientX, e.clientY);
+    resizeHandle.setPointerCapture(e.pointerId);
+  }
+  window.addEventListener("pointerdown", onWindowPointerDown, true);
+  resizeHandle.addEventListener("pointermove", onResizePointerMove);
+  resizeHandle.addEventListener("pointerup", onResizePointerUp);
+  resizeHandle.addEventListener("pointercancel", onResizePointerUp);
   function updateCollapse() {
     if (isCollapsed) {
       body.style.display = "none";
@@ -671,10 +668,7 @@ function setup(ctx) {
   return () => {
     if (autoTimer)
       clearTimeout(autoTimer);
-    document.removeEventListener("mousemove", onResizeMove);
-    document.removeEventListener("mouseup", onResizeEnd);
-    document.removeEventListener("touchmove", onResizeMove);
-    document.removeEventListener("touchend", onResizeEnd);
+    window.removeEventListener("pointerdown", onWindowPointerDown, true);
     unsubBackend();
     widget.destroy();
     tab.destroy();

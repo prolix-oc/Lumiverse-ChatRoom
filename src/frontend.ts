@@ -465,6 +465,7 @@ export function setup(ctx: SpindleFrontendContext) {
     display:${isMobile ? 'none' : 'flex'};
     align-items:flex-end;justify-content:flex-end;
     padding:0 4px 4px 0;
+    touch-action:none;
   `;
   resizeHandle.innerHTML = `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="opacity:.3;"><polyline points="22 12 22 22 12 22"/></svg>`;
   widget.root.appendChild(resizeHandle);
@@ -487,29 +488,13 @@ export function setup(ctx: SpindleFrontendContext) {
     document.body.style.cursor = 'nwse-resize';
   }
 
-  resizeHandle.addEventListener('mousedown', (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    startResize(e.clientX, e.clientY);
-  });
-  resizeHandle.addEventListener('touchstart', (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const t = e.touches[0];
-    startResize(t.clientX, t.clientY);
-  }, { passive: false });
-
-  function onResizeMove(e: MouseEvent | TouchEvent) {
+  function onResizePointerMove(e: PointerEvent) {
     if (!isResizing) return;
-    const cx = 'touches' in e ? e.touches[0].clientX : e.clientX;
-    const cy = 'touches' in e ? e.touches[0].clientY : e.clientY;
-    const nw = Math.max(WIDGET_MIN_W, Math.min(WIDGET_MAX_W, resizeStart.w + (cx - resizeStart.x)));
-    const nh = Math.max(WIDGET_MIN_H, Math.min(WIDGET_MAX_H, resizeStart.h + (cy - resizeStart.y)));
+    const nw = Math.max(WIDGET_MIN_W, Math.min(WIDGET_MAX_W, resizeStart.w + (e.clientX - resizeStart.x)));
+    const nh = Math.max(WIDGET_MIN_H, Math.min(WIDGET_MAX_H, resizeStart.h + (e.clientY - resizeStart.y)));
     shell.style.width = nw + 'px';
     shell.style.height = nh + 'px';
     if (isCollapsed) { isCollapsed = false; updateCollapse(); }
-    // Counteract host drag by snapping back to the original position after the
-    // current frame's event handlers have all run (including the host's drag).
     if (rafId) cancelAnimationFrame(rafId);
     rafId = requestAnimationFrame(() => {
       widget.moveTo(resizeAnchor.x, resizeAnchor.y);
@@ -517,20 +502,30 @@ export function setup(ctx: SpindleFrontendContext) {
     });
   }
 
-  function onResizeEnd() {
+  function onResizePointerUp(e: PointerEvent) {
     if (!isResizing) return;
     isResizing = false;
     document.body.style.cursor = '';
     if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
-    // Nudge the host's drag system so it realises the gesture is over.
-    const ev = new PointerEvent('pointerup', { bubbles: true, cancelable: true });
-    widget.root.dispatchEvent(ev);
+    try { resizeHandle.releasePointerCapture(e.pointerId); } catch (_) {}
   }
 
-  document.addEventListener('mousemove', onResizeMove);
-  document.addEventListener('mouseup', onResizeEnd);
-  document.addEventListener('touchmove', onResizeMove, { passive: false });
-  document.addEventListener('touchend', onResizeEnd);
+  // Use pointer events with setPointerCapture — works for mouse, touch, and pen.
+  // The capture-phase window listener lets us stopPropagation before the host's
+  // drag system hears the event. We do NOT call preventDefault() because that
+  // suppresses compatibility mouse events per the Pointer Events spec.
+  function onWindowPointerDown(e: PointerEvent) {
+    const target = e.target as HTMLElement;
+    if (!target?.closest?.('.chatroom-resize')) return;
+    e.stopPropagation();
+    startResize(e.clientX, e.clientY);
+    resizeHandle.setPointerCapture(e.pointerId);
+  }
+  window.addEventListener('pointerdown', onWindowPointerDown, true);
+
+  resizeHandle.addEventListener('pointermove', onResizePointerMove);
+  resizeHandle.addEventListener('pointerup', onResizePointerUp);
+  resizeHandle.addEventListener('pointercancel', onResizePointerUp);
 
   // ── Collapse / Fullscreen logic ──
   function updateCollapse() {
@@ -756,10 +751,7 @@ export function setup(ctx: SpindleFrontendContext) {
 
   return () => {
     if (autoTimer) clearTimeout(autoTimer);
-    document.removeEventListener('mousemove', onResizeMove);
-    document.removeEventListener('mouseup', onResizeEnd);
-    document.removeEventListener('touchmove', onResizeMove);
-    document.removeEventListener('touchend', onResizeEnd);
+    window.removeEventListener('pointerdown', onWindowPointerDown, true);
     unsubBackend();
     widget.destroy();
     tab.destroy();
