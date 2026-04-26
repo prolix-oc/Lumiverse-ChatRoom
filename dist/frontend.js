@@ -22,7 +22,6 @@ function setup(ctx) {
     display: flex;
     flex-direction: column;
     gap: 16px;
-    max-width: 520px;
     font-family: var(--lumiverse-font-family, system-ui, -apple-system, sans-serif);
   `;
   const headerSection = document.createElement("div");
@@ -32,13 +31,13 @@ function setup(ctx) {
   const titleEl = document.createElement("h3");
   titleEl.textContent = "Council Chatroom Overlay";
   titleEl.style.cssText = `
-    margin: 0; font-size: 18px; font-weight: 700;
+    margin: 0; font-size: 16px; font-weight: 600;
     color: var(--lumiverse-text); letter-spacing: -0.01em;
   `;
   const descEl = document.createElement("p");
   descEl.textContent = "Configure how your council members react to the story. Toggle the floating widget below or use the controls in the chatroom itself.";
   descEl.style.cssText = `
-    margin: 0; font-size: 13px; color: var(--lumiverse-text-muted);
+    margin: 0; font-size: 12px; color: var(--lumiverse-text-dim);
     line-height: 1.5;
   `;
   headerSection.appendChild(titleEl);
@@ -49,17 +48,17 @@ function setup(ctx) {
     background: var(--lumiverse-fill-subtle);
     border: 1px solid var(--lumiverse-border);
     border-radius: var(--lumiverse-radius, 10px);
-    padding: 16px;
+    padding: 14px;
     display: flex; align-items: center; justify-content: space-between; gap: 12px;
   `;
   const toggleInfo = document.createElement("div");
   toggleInfo.style.cssText = "display: flex; flex-direction: column; gap: 2px;";
   const toggleLabel = document.createElement("span");
   toggleLabel.textContent = "Floating Widget";
-  toggleLabel.style.cssText = "font-size: 14px; font-weight: 600; color: var(--lumiverse-text);";
+  toggleLabel.style.cssText = "font-size: 13px; font-weight: 600; color: var(--lumiverse-text);";
   const toggleHint = document.createElement("span");
   toggleHint.textContent = "Show or hide the chatroom overlay";
-  toggleHint.style.cssText = "font-size: 12px; color: var(--lumiverse-text-muted);";
+  toggleHint.style.cssText = "font-size: 11px; color: var(--lumiverse-text-dim); line-height: 1.4;";
   toggleInfo.appendChild(toggleLabel);
   toggleInfo.appendChild(toggleHint);
   const toggleBtn = document.createElement("button");
@@ -67,13 +66,13 @@ function setup(ctx) {
   toggleBtn.textContent = "Toggle Visibility";
   toggleBtn.style.cssText = `
     padding: 8px 14px;
-    background: var(--lumiverse-fill);
+    background: var(--lumiverse-fill-subtle);
     color: var(--lumiverse-text);
     border: 1px solid var(--lumiverse-border);
     border-radius: var(--lumiverse-radius, 8px);
     cursor: pointer;
-    font-size: 13px;
-    font-weight: 500;
+    font-size: 12px;
+    font-weight: 600;
     transition: background .15s, border-color .15s;
     flex-shrink: 0;
   `;
@@ -82,7 +81,7 @@ function setup(ctx) {
     toggleBtn.style.borderColor = "var(--lumiverse-border-hover)";
   });
   toggleBtn.addEventListener("mouseleave", () => {
-    toggleBtn.style.background = "var(--lumiverse-fill)";
+    toggleBtn.style.background = "var(--lumiverse-fill-subtle)";
     toggleBtn.style.borderColor = "var(--lumiverse-border)";
   });
   toggleBtn.addEventListener("click", () => {
@@ -93,10 +92,10 @@ function setup(ctx) {
   settingsContainer.appendChild(toggleCard);
   const configCard = document.createElement("div");
   configCard.style.cssText = `
-    background: var(--lumiverse-bg-elevated, var(--lumiverse-fill-subtle));
+    background: var(--lumiverse-fill-subtle);
     border: 1px solid var(--lumiverse-border);
     border-radius: var(--lumiverse-radius, 10px);
-    padding: 20px;
+    padding: 16px;
     display: flex; flex-direction: column; gap: 16px;
   `;
   const configHeader = document.createElement("div");
@@ -110,7 +109,7 @@ function setup(ctx) {
   configHeaderIcon.style.cssText = "color: var(--lumiverse-primary); display: flex; flex-shrink: 0;";
   const configTitle = document.createElement("h4");
   configTitle.textContent = "Chatroom Configuration";
-  configTitle.style.cssText = "margin: 0; font-size: 15px; font-weight: 700; color: var(--lumiverse-text);";
+  configTitle.style.cssText = "margin: 0; font-size: 15px; font-weight: 600; color: var(--lumiverse-text);";
   configHeader.appendChild(configHeaderIcon);
   configHeader.appendChild(configTitle);
   configCard.appendChild(configHeader);
@@ -121,10 +120,10 @@ function setup(ctx) {
     labelWrap.style.cssText = "display: flex; flex-direction: column; gap: 2px;";
     const label = document.createElement("label");
     label.textContent = labelText;
-    label.style.cssText = "font-size: 13px; font-weight: 600; color: var(--lumiverse-text);";
+    label.style.cssText = "font-size: 12px; font-weight: 500; color: var(--lumiverse-text-muted); letter-spacing: 0.03em; text-transform: uppercase;";
     const desc = document.createElement("span");
     desc.textContent = description;
-    desc.style.cssText = "font-size: 12px; color: var(--lumiverse-text-muted); line-height: 1.4;";
+    desc.style.cssText = "font-size: 11px; color: var(--lumiverse-text-dim); line-height: 1.45;";
     labelWrap.appendChild(label);
     labelWrap.appendChild(desc);
     control.style.alignSelf = "flex-start";
@@ -136,24 +135,22 @@ function setup(ctx) {
     const sel = document.createElement("select");
     makeInteractive(sel);
     sel.style.cssText = `
-      padding: 8px 10px;
+      padding: 6px 10px;
       border: 1px solid var(--lumiverse-border);
       border-radius: var(--lumiverse-radius, 8px);
-      background: var(--lumiverse-fill);
+      background: var(--lumiverse-fill-subtle);
       color: var(--lumiverse-text);
       font-size: 13px;
       outline: none;
       min-width: 240px;
       cursor: pointer;
-      transition: border-color .15s, box-shadow .15s;
+      transition: border-color .15s;
     `;
     sel.addEventListener("focus", () => {
       sel.style.borderColor = "var(--lumiverse-primary)";
-      sel.style.boxShadow = "0 0 0 3px var(--lumiverse-primary-010, rgba(139,92,246,0.15))";
     });
     sel.addEventListener("blur", () => {
       sel.style.borderColor = "var(--lumiverse-border)";
-      sel.style.boxShadow = "none";
     });
     return sel;
   }
@@ -165,23 +162,21 @@ function setup(ctx) {
     inp.max = max;
     inp.value = value;
     inp.style.cssText = `
-      width: 80px;
-      padding: 8px 10px;
+      width: 100px;
+      padding: 6px 10px;
       border: 1px solid var(--lumiverse-border);
       border-radius: var(--lumiverse-radius, 8px);
-      background: var(--lumiverse-fill);
+      background: var(--lumiverse-fill-subtle);
       color: var(--lumiverse-text);
       font-size: 13px;
       outline: none;
-      transition: border-color .15s, box-shadow .15s;
+      transition: border-color .15s;
     `;
     inp.addEventListener("focus", () => {
       inp.style.borderColor = "var(--lumiverse-primary)";
-      inp.style.boxShadow = "0 0 0 3px var(--lumiverse-primary-010, rgba(139,92,246,0.15))";
     });
     inp.addEventListener("blur", () => {
       inp.style.borderColor = "var(--lumiverse-border)";
-      inp.style.boxShadow = "none";
     });
     return inp;
   }
@@ -202,14 +197,14 @@ function setup(ctx) {
   randomToggleRow.style.cssText = "display: flex; align-items: center; gap: 10px; cursor: pointer; user-select: none; padding: 4px 0;";
   const randomToggleCheckbox = document.createElement("input");
   randomToggleCheckbox.type = "checkbox";
-  randomToggleCheckbox.style.cssText = "width: 18px; height: 18px; cursor: pointer; accent-color: var(--lumiverse-primary); flex-shrink: 0;";
+  randomToggleCheckbox.style.cssText = "width: 16px; height: 16px; cursor: pointer; accent-color: var(--lumiverse-primary); flex-shrink: 0;";
   const randomToggleLabel = document.createElement("span");
   randomToggleLabel.textContent = "Use Random Message Interval";
   randomToggleLabel.style.cssText = "font-size: 13px; font-weight: 500; color: var(--lumiverse-text);";
   randomToggleRow.appendChild(randomToggleCheckbox);
   randomToggleRow.appendChild(randomToggleLabel);
   makeInteractive(randomToggleCheckbox);
-  timeSettingsGroup.appendChild(createSettingRow("Random Interval", "When enabled, the delay between messages varies randomly within the range below. When disabled, the fixed time above is used exactly.", randomToggleRow));
+  timeSettingsGroup.appendChild(createSettingRow("Random Interval", "When enabled, the delay between messages varies randomly within the range below.", randomToggleRow));
   const intervalRangeWrap = document.createElement("div");
   intervalRangeWrap.style.cssText = "display: flex; gap: 12px; align-items: center;";
   const intervalMinInput = createStyledNumberInput("1", "60", "5");
@@ -230,7 +225,7 @@ function setup(ctx) {
   maxWrap.appendChild(intervalMaxInput);
   const rangeArrow = document.createElement("span");
   rangeArrow.textContent = "→";
-  rangeArrow.style.cssText = "color: var(--lumiverse-text-muted); font-size: 13px; padding-top: 16px;";
+  rangeArrow.style.cssText = "color: var(--lumiverse-text-dim); font-size: 12px; padding-top: 18px; font-weight: 500;";
   intervalRangeWrap.appendChild(minWrap);
   intervalRangeWrap.appendChild(rangeArrow);
   intervalRangeWrap.appendChild(maxWrap);
@@ -245,14 +240,14 @@ function setup(ctx) {
   randomMessageCountRow.style.cssText = "display: flex; align-items: center; gap: 10px; cursor: pointer; user-select: none; padding: 4px 0;";
   const randomMessageCountCheckbox = document.createElement("input");
   randomMessageCountCheckbox.type = "checkbox";
-  randomMessageCountCheckbox.style.cssText = "width: 18px; height: 18px; cursor: pointer; accent-color: var(--lumiverse-primary); flex-shrink: 0;";
+  randomMessageCountCheckbox.style.cssText = "width: 16px; height: 16px; cursor: pointer; accent-color: var(--lumiverse-primary); flex-shrink: 0;";
   const randomMessageCountLabel = document.createElement("span");
   randomMessageCountLabel.textContent = "Use Random Message Count";
   randomMessageCountLabel.style.cssText = "font-size: 13px; font-weight: 500; color: var(--lumiverse-text);";
   randomMessageCountRow.appendChild(randomMessageCountCheckbox);
   randomMessageCountRow.appendChild(randomMessageCountLabel);
   makeInteractive(randomMessageCountCheckbox);
-  messagesSettingsGroup.appendChild(createSettingRow("Random Message Count", "When enabled, the number of messages required varies randomly within the range below. When disabled, the fixed count above is used exactly.", randomMessageCountRow));
+  messagesSettingsGroup.appendChild(createSettingRow("Random Message Count", "When enabled, the number of messages required varies randomly within the range below.", randomMessageCountRow));
   const messageCountRangeWrap = document.createElement("div");
   messageCountRangeWrap.style.cssText = "display: flex; gap: 12px; align-items: center;";
   const messageCountMinInput = createStyledNumberInput("1", "100", "3");
@@ -273,7 +268,7 @@ function setup(ctx) {
   msgMaxWrap.appendChild(messageCountMaxInput);
   const msgRangeArrow = document.createElement("span");
   msgRangeArrow.textContent = "→";
-  msgRangeArrow.style.cssText = "color: var(--lumiverse-text-muted); font-size: 13px; padding-top: 16px;";
+  msgRangeArrow.style.cssText = "color: var(--lumiverse-text-dim); font-size: 12px; padding-top: 18px; font-weight: 500;";
   messageCountRangeWrap.appendChild(msgMinWrap);
   messageCountRangeWrap.appendChild(msgRangeArrow);
   messageCountRangeWrap.appendChild(msgMaxWrap);
@@ -303,18 +298,18 @@ function setup(ctx) {
   const maxContextTokensInput = createStyledNumberInput("512", "32768", "4096");
   configCard.appendChild(createSettingRow("Max Context Tokens", "Maximum tokens the council chatroom history can consume. Older messages are removed automatically when this limit is exceeded.", maxContextTokensInput));
   const saveBtnWrap = document.createElement("div");
-  saveBtnWrap.style.cssText = "display: flex; gap: 10px; padding-top: 4px;";
+  saveBtnWrap.style.cssText = "display: flex; gap: 10px; padding-top: 8px;";
   const saveBtn = document.createElement("button");
   makeInteractive(saveBtn);
   saveBtn.textContent = "Save Configuration";
   saveBtn.style.cssText = `
-    padding: 10px 18px;
+    padding: 8px 16px;
     background: var(--lumiverse-primary);
     color: white;
     border: none;
     border-radius: var(--lumiverse-radius, 8px);
     cursor: pointer;
-    font-size: 13px;
+    font-size: 12px;
     font-weight: 600;
     transition: filter .15s, transform .1s;
   `;
@@ -344,13 +339,13 @@ function setup(ctx) {
   makeInteractive(clearBtn);
   clearBtn.textContent = "Clear Chat History";
   clearBtn.style.cssText = `
-    padding: 10px 18px;
+    padding: 8px 16px;
     background: transparent;
     color: var(--lumiverse-danger, #ef4444);
     border: 1px solid var(--lumiverse-danger, #ef4444);
     border-radius: var(--lumiverse-radius, 8px);
     cursor: pointer;
-    font-size: 13px;
+    font-size: 12px;
     font-weight: 600;
     transition: filter .15s, transform .1s, background .15s;
   `;

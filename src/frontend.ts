@@ -26,7 +26,6 @@ export function setup(ctx: SpindleFrontendContext) {
     display: flex;
     flex-direction: column;
     gap: 16px;
-    max-width: 520px;
     font-family: var(--lumiverse-font-family, system-ui, -apple-system, sans-serif);
   `;
 
@@ -39,14 +38,14 @@ export function setup(ctx: SpindleFrontendContext) {
   const titleEl = document.createElement('h3');
   titleEl.textContent = 'Council Chatroom Overlay';
   titleEl.style.cssText = `
-    margin: 0; font-size: 18px; font-weight: 700;
+    margin: 0; font-size: 16px; font-weight: 600;
     color: var(--lumiverse-text); letter-spacing: -0.01em;
   `;
 
   const descEl = document.createElement('p');
   descEl.textContent = 'Configure how your council members react to the story. Toggle the floating widget below or use the controls in the chatroom itself.';
   descEl.style.cssText = `
-    margin: 0; font-size: 13px; color: var(--lumiverse-text-muted);
+    margin: 0; font-size: 12px; color: var(--lumiverse-text-dim);
     line-height: 1.5;
   `;
 
@@ -60,7 +59,7 @@ export function setup(ctx: SpindleFrontendContext) {
     background: var(--lumiverse-fill-subtle);
     border: 1px solid var(--lumiverse-border);
     border-radius: var(--lumiverse-radius, 10px);
-    padding: 16px;
+    padding: 14px;
     display: flex; align-items: center; justify-content: space-between; gap: 12px;
   `;
 
@@ -68,10 +67,10 @@ export function setup(ctx: SpindleFrontendContext) {
   toggleInfo.style.cssText = 'display: flex; flex-direction: column; gap: 2px;';
   const toggleLabel = document.createElement('span');
   toggleLabel.textContent = 'Floating Widget';
-  toggleLabel.style.cssText = 'font-size: 14px; font-weight: 600; color: var(--lumiverse-text);';
+  toggleLabel.style.cssText = 'font-size: 13px; font-weight: 600; color: var(--lumiverse-text);';
   const toggleHint = document.createElement('span');
   toggleHint.textContent = 'Show or hide the chatroom overlay';
-  toggleHint.style.cssText = 'font-size: 12px; color: var(--lumiverse-text-muted);';
+  toggleHint.style.cssText = 'font-size: 11px; color: var(--lumiverse-text-dim); line-height: 1.4;';
   toggleInfo.appendChild(toggleLabel);
   toggleInfo.appendChild(toggleHint);
 
@@ -80,13 +79,13 @@ export function setup(ctx: SpindleFrontendContext) {
   toggleBtn.textContent = 'Toggle Visibility';
   toggleBtn.style.cssText = `
     padding: 8px 14px;
-    background: var(--lumiverse-fill);
+    background: var(--lumiverse-fill-subtle);
     color: var(--lumiverse-text);
     border: 1px solid var(--lumiverse-border);
     border-radius: var(--lumiverse-radius, 8px);
     cursor: pointer;
-    font-size: 13px;
-    font-weight: 500;
+    font-size: 12px;
+    font-weight: 600;
     transition: background .15s, border-color .15s;
     flex-shrink: 0;
   `;
@@ -95,7 +94,7 @@ export function setup(ctx: SpindleFrontendContext) {
     toggleBtn.style.borderColor = 'var(--lumiverse-border-hover)';
   });
   toggleBtn.addEventListener('mouseleave', () => {
-    toggleBtn.style.background = 'var(--lumiverse-fill)';
+    toggleBtn.style.background = 'var(--lumiverse-fill-subtle)';
     toggleBtn.style.borderColor = 'var(--lumiverse-border)';
   });
   toggleBtn.addEventListener('click', () => {
@@ -109,10 +108,10 @@ export function setup(ctx: SpindleFrontendContext) {
   // ── Configuration Card ──
   const configCard = document.createElement('div');
   configCard.style.cssText = `
-    background: var(--lumiverse-bg-elevated, var(--lumiverse-fill-subtle));
+    background: var(--lumiverse-fill-subtle);
     border: 1px solid var(--lumiverse-border);
     border-radius: var(--lumiverse-radius, 10px);
-    padding: 20px;
+    padding: 16px;
     display: flex; flex-direction: column; gap: 16px;
   `;
 
@@ -127,7 +126,7 @@ export function setup(ctx: SpindleFrontendContext) {
   configHeaderIcon.style.cssText = 'color: var(--lumiverse-primary); display: flex; flex-shrink: 0;';
   const configTitle = document.createElement('h4');
   configTitle.textContent = 'Chatroom Configuration';
-  configTitle.style.cssText = 'margin: 0; font-size: 15px; font-weight: 700; color: var(--lumiverse-text);';
+  configTitle.style.cssText = 'margin: 0; font-size: 15px; font-weight: 600; color: var(--lumiverse-text);';
   configHeader.appendChild(configHeaderIcon);
   configHeader.appendChild(configTitle);
   configCard.appendChild(configHeader);
@@ -142,11 +141,11 @@ export function setup(ctx: SpindleFrontendContext) {
 
     const label = document.createElement('label');
     label.textContent = labelText;
-    label.style.cssText = 'font-size: 13px; font-weight: 600; color: var(--lumiverse-text);';
+    label.style.cssText = 'font-size: 12px; font-weight: 500; color: var(--lumiverse-text-muted); letter-spacing: 0.03em; text-transform: uppercase;';
 
     const desc = document.createElement('span');
     desc.textContent = description;
-    desc.style.cssText = 'font-size: 12px; color: var(--lumiverse-text-muted); line-height: 1.4;';
+    desc.style.cssText = 'font-size: 11px; color: var(--lumiverse-text-dim); line-height: 1.45;';
 
     labelWrap.appendChild(label);
     labelWrap.appendChild(desc);
@@ -162,24 +161,22 @@ export function setup(ctx: SpindleFrontendContext) {
     const sel = document.createElement('select');
     makeInteractive(sel);
     sel.style.cssText = `
-      padding: 8px 10px;
+      padding: 6px 10px;
       border: 1px solid var(--lumiverse-border);
       border-radius: var(--lumiverse-radius, 8px);
-      background: var(--lumiverse-fill);
+      background: var(--lumiverse-fill-subtle);
       color: var(--lumiverse-text);
       font-size: 13px;
       outline: none;
       min-width: 240px;
       cursor: pointer;
-      transition: border-color .15s, box-shadow .15s;
+      transition: border-color .15s;
     `;
     sel.addEventListener('focus', () => {
       sel.style.borderColor = 'var(--lumiverse-primary)';
-      sel.style.boxShadow = '0 0 0 3px var(--lumiverse-primary-010, rgba(139,92,246,0.15))';
     });
     sel.addEventListener('blur', () => {
       sel.style.borderColor = 'var(--lumiverse-border)';
-      sel.style.boxShadow = 'none';
     });
     return sel;
   }
@@ -193,23 +190,21 @@ export function setup(ctx: SpindleFrontendContext) {
     inp.max = max;
     inp.value = value;
     inp.style.cssText = `
-      width: 80px;
-      padding: 8px 10px;
+      width: 100px;
+      padding: 6px 10px;
       border: 1px solid var(--lumiverse-border);
       border-radius: var(--lumiverse-radius, 8px);
-      background: var(--lumiverse-fill);
+      background: var(--lumiverse-fill-subtle);
       color: var(--lumiverse-text);
       font-size: 13px;
       outline: none;
-      transition: border-color .15s, box-shadow .15s;
+      transition: border-color .15s;
     `;
     inp.addEventListener('focus', () => {
       inp.style.borderColor = 'var(--lumiverse-primary)';
-      inp.style.boxShadow = '0 0 0 3px var(--lumiverse-primary-010, rgba(139,92,246,0.15))';
     });
     inp.addEventListener('blur', () => {
       inp.style.borderColor = 'var(--lumiverse-border)';
-      inp.style.boxShadow = 'none';
     });
     return inp;
   }
@@ -252,7 +247,7 @@ export function setup(ctx: SpindleFrontendContext) {
   randomToggleRow.style.cssText = 'display: flex; align-items: center; gap: 10px; cursor: pointer; user-select: none; padding: 4px 0;';
   const randomToggleCheckbox = document.createElement('input');
   randomToggleCheckbox.type = 'checkbox';
-  randomToggleCheckbox.style.cssText = 'width: 18px; height: 18px; cursor: pointer; accent-color: var(--lumiverse-primary); flex-shrink: 0;';
+  randomToggleCheckbox.style.cssText = 'width: 16px; height: 16px; cursor: pointer; accent-color: var(--lumiverse-primary); flex-shrink: 0;';
   const randomToggleLabel = document.createElement('span');
   randomToggleLabel.textContent = 'Use Random Message Interval';
   randomToggleLabel.style.cssText = 'font-size: 13px; font-weight: 500; color: var(--lumiverse-text);';
@@ -261,7 +256,7 @@ export function setup(ctx: SpindleFrontendContext) {
   makeInteractive(randomToggleCheckbox);
   timeSettingsGroup.appendChild(createSettingRow(
     'Random Interval',
-    'When enabled, the delay between messages varies randomly within the range below. When disabled, the fixed time above is used exactly.',
+    'When enabled, the delay between messages varies randomly within the range below.',
     randomToggleRow
   ));
 
@@ -290,7 +285,7 @@ export function setup(ctx: SpindleFrontendContext) {
 
   const rangeArrow = document.createElement('span');
   rangeArrow.textContent = '→';
-  rangeArrow.style.cssText = 'color: var(--lumiverse-text-muted); font-size: 13px; padding-top: 16px;';
+  rangeArrow.style.cssText = 'color: var(--lumiverse-text-dim); font-size: 12px; padding-top: 18px; font-weight: 500;';
 
   intervalRangeWrap.appendChild(minWrap);
   intervalRangeWrap.appendChild(rangeArrow);
@@ -321,7 +316,7 @@ export function setup(ctx: SpindleFrontendContext) {
   randomMessageCountRow.style.cssText = 'display: flex; align-items: center; gap: 10px; cursor: pointer; user-select: none; padding: 4px 0;';
   const randomMessageCountCheckbox = document.createElement('input');
   randomMessageCountCheckbox.type = 'checkbox';
-  randomMessageCountCheckbox.style.cssText = 'width: 18px; height: 18px; cursor: pointer; accent-color: var(--lumiverse-primary); flex-shrink: 0;';
+  randomMessageCountCheckbox.style.cssText = 'width: 16px; height: 16px; cursor: pointer; accent-color: var(--lumiverse-primary); flex-shrink: 0;';
   const randomMessageCountLabel = document.createElement('span');
   randomMessageCountLabel.textContent = 'Use Random Message Count';
   randomMessageCountLabel.style.cssText = 'font-size: 13px; font-weight: 500; color: var(--lumiverse-text);';
@@ -330,7 +325,7 @@ export function setup(ctx: SpindleFrontendContext) {
   makeInteractive(randomMessageCountCheckbox);
   messagesSettingsGroup.appendChild(createSettingRow(
     'Random Message Count',
-    'When enabled, the number of messages required varies randomly within the range below. When disabled, the fixed count above is used exactly.',
+    'When enabled, the number of messages required varies randomly within the range below.',
     randomMessageCountRow
   ));
 
@@ -359,7 +354,7 @@ export function setup(ctx: SpindleFrontendContext) {
 
   const msgRangeArrow = document.createElement('span');
   msgRangeArrow.textContent = '→';
-  msgRangeArrow.style.cssText = 'color: var(--lumiverse-text-muted); font-size: 13px; padding-top: 16px;';
+  msgRangeArrow.style.cssText = 'color: var(--lumiverse-text-dim); font-size: 12px; padding-top: 18px; font-weight: 500;';
 
   messageCountRangeWrap.appendChild(msgMinWrap);
   messageCountRangeWrap.appendChild(msgRangeArrow);
@@ -415,19 +410,19 @@ export function setup(ctx: SpindleFrontendContext) {
 
   // Save Button
   const saveBtnWrap = document.createElement('div');
-  saveBtnWrap.style.cssText = 'display: flex; gap: 10px; padding-top: 4px;';
+  saveBtnWrap.style.cssText = 'display: flex; gap: 10px; padding-top: 8px;';
 
   const saveBtn = document.createElement('button');
   makeInteractive(saveBtn);
   saveBtn.textContent = 'Save Configuration';
   saveBtn.style.cssText = `
-    padding: 10px 18px;
+    padding: 8px 16px;
     background: var(--lumiverse-primary);
     color: white;
     border: none;
     border-radius: var(--lumiverse-radius, 8px);
     cursor: pointer;
-    font-size: 13px;
+    font-size: 12px;
     font-weight: 600;
     transition: filter .15s, transform .1s;
   `;
@@ -459,13 +454,13 @@ export function setup(ctx: SpindleFrontendContext) {
   makeInteractive(clearBtn);
   clearBtn.textContent = 'Clear Chat History';
   clearBtn.style.cssText = `
-    padding: 10px 18px;
+    padding: 8px 16px;
     background: transparent;
     color: var(--lumiverse-danger, #ef4444);
     border: 1px solid var(--lumiverse-danger, #ef4444);
     border-radius: var(--lumiverse-radius, 8px);
     cursor: pointer;
-    font-size: 13px;
+    font-size: 12px;
     font-weight: 600;
     transition: filter .15s, transform .1s, background .15s;
   `;
