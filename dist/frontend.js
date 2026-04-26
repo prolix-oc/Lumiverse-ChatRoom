@@ -188,8 +188,16 @@ function setup(ctx) {
   const connectionSelect = createStyledSelect();
   connectionSelect.innerHTML = '<option value="">Default Active Connection</option>';
   configCard.appendChild(createSettingRow("Generation Connection Profile", "The LLM connection used to generate council messages.", connectionSelect));
+  const triggerModeSelect = createStyledSelect();
+  triggerModeSelect.innerHTML = `
+    <option value="time">Time-based (seconds)</option>
+    <option value="messages">Message-based (chat messages)</option>
+  `;
+  configCard.appendChild(createSettingRow("Auto-Reply Trigger", "Choose whether council auto-replies are triggered by elapsed time or by the number of story chat messages sent.", triggerModeSelect));
+  const timeSettingsGroup = document.createElement("div");
+  timeSettingsGroup.style.cssText = "display: flex; flex-direction: column; gap: 16px;";
   const messageIntervalInput = createStyledNumberInput("1", "3600", "10");
-  configCard.appendChild(createSettingRow("Time Between Messages (seconds)", "How long to wait before generating the next council message.", messageIntervalInput));
+  timeSettingsGroup.appendChild(createSettingRow("Time Between Messages (seconds)", "How long to wait before generating the next council message.", messageIntervalInput));
   const randomToggleRow = document.createElement("div");
   randomToggleRow.style.cssText = "display: flex; align-items: center; gap: 10px; cursor: pointer; user-select: none; padding: 4px 0;";
   const randomToggleCheckbox = document.createElement("input");
@@ -201,7 +209,7 @@ function setup(ctx) {
   randomToggleRow.appendChild(randomToggleCheckbox);
   randomToggleRow.appendChild(randomToggleLabel);
   makeInteractive(randomToggleCheckbox);
-  configCard.appendChild(createSettingRow("Random Interval", "When enabled, the delay between messages varies randomly within the range below. When disabled, the fixed time above is used exactly.", randomToggleRow));
+  timeSettingsGroup.appendChild(createSettingRow("Random Interval", "When enabled, the delay between messages varies randomly within the range below. When disabled, the fixed time above is used exactly.", randomToggleRow));
   const intervalRangeWrap = document.createElement("div");
   intervalRangeWrap.style.cssText = "display: flex; gap: 12px; align-items: center;";
   const intervalMinInput = createStyledNumberInput("1", "60", "5");
@@ -227,13 +235,69 @@ function setup(ctx) {
   intervalRangeWrap.appendChild(rangeArrow);
   intervalRangeWrap.appendChild(maxWrap);
   const rangeRow = createSettingRow("Random Interval Range", "Council messages will be spaced by a random duration between these two values.", intervalRangeWrap);
-  configCard.appendChild(rangeRow);
-  function updateRangeVisibility() {
+  timeSettingsGroup.appendChild(rangeRow);
+  configCard.appendChild(timeSettingsGroup);
+  const messagesSettingsGroup = document.createElement("div");
+  messagesSettingsGroup.style.cssText = "display: none; flex-direction: column; gap: 16px;";
+  const messageCountInput = createStyledNumberInput("1", "100", "5");
+  messagesSettingsGroup.appendChild(createSettingRow("Messages Between Responses", "How many story chat messages must be sent before the council auto-replies.", messageCountInput));
+  const randomMessageCountRow = document.createElement("div");
+  randomMessageCountRow.style.cssText = "display: flex; align-items: center; gap: 10px; cursor: pointer; user-select: none; padding: 4px 0;";
+  const randomMessageCountCheckbox = document.createElement("input");
+  randomMessageCountCheckbox.type = "checkbox";
+  randomMessageCountCheckbox.style.cssText = "width: 18px; height: 18px; cursor: pointer; accent-color: var(--lumiverse-primary); flex-shrink: 0;";
+  const randomMessageCountLabel = document.createElement("span");
+  randomMessageCountLabel.textContent = "Use Random Message Count";
+  randomMessageCountLabel.style.cssText = "font-size: 13px; font-weight: 500; color: var(--lumiverse-text);";
+  randomMessageCountRow.appendChild(randomMessageCountCheckbox);
+  randomMessageCountRow.appendChild(randomMessageCountLabel);
+  makeInteractive(randomMessageCountCheckbox);
+  messagesSettingsGroup.appendChild(createSettingRow("Random Message Count", "When enabled, the number of messages required varies randomly within the range below. When disabled, the fixed count above is used exactly.", randomMessageCountRow));
+  const messageCountRangeWrap = document.createElement("div");
+  messageCountRangeWrap.style.cssText = "display: flex; gap: 12px; align-items: center;";
+  const messageCountMinInput = createStyledNumberInput("1", "100", "3");
+  const messageCountMaxInput = createStyledNumberInput("1", "100", "7");
+  const msgMinWrap = document.createElement("div");
+  msgMinWrap.style.cssText = "display: flex; flex-direction: column; gap: 4px;";
+  const msgMinLabel = document.createElement("span");
+  msgMinLabel.textContent = "Min";
+  msgMinLabel.style.cssText = "font-size: 11px; font-weight: 600; color: var(--lumiverse-text-muted); text-transform: uppercase; letter-spacing: 0.03em;";
+  msgMinWrap.appendChild(msgMinLabel);
+  msgMinWrap.appendChild(messageCountMinInput);
+  const msgMaxWrap = document.createElement("div");
+  msgMaxWrap.style.cssText = "display: flex; flex-direction: column; gap: 4px;";
+  const msgMaxLabel = document.createElement("span");
+  msgMaxLabel.textContent = "Max";
+  msgMaxLabel.style.cssText = "font-size: 11px; font-weight: 600; color: var(--lumiverse-text-muted); text-transform: uppercase; letter-spacing: 0.03em;";
+  msgMaxWrap.appendChild(msgMaxLabel);
+  msgMaxWrap.appendChild(messageCountMaxInput);
+  const msgRangeArrow = document.createElement("span");
+  msgRangeArrow.textContent = "→";
+  msgRangeArrow.style.cssText = "color: var(--lumiverse-text-muted); font-size: 13px; padding-top: 16px;";
+  messageCountRangeWrap.appendChild(msgMinWrap);
+  messageCountRangeWrap.appendChild(msgRangeArrow);
+  messageCountRangeWrap.appendChild(msgMaxWrap);
+  const messageCountRangeRow = createSettingRow("Random Message Count Range", "Council will auto-reply after a random number of story messages between these two values.", messageCountRangeWrap);
+  messagesSettingsGroup.appendChild(messageCountRangeRow);
+  configCard.appendChild(messagesSettingsGroup);
+  function updateTimeRangeVisibility() {
     rangeRow.style.display = randomToggleCheckbox.checked ? "flex" : "none";
     messageIntervalInput.disabled = randomToggleCheckbox.checked;
     messageIntervalInput.style.opacity = randomToggleCheckbox.checked ? "0.5" : "1";
   }
-  randomToggleCheckbox.addEventListener("change", updateRangeVisibility);
+  randomToggleCheckbox.addEventListener("change", updateTimeRangeVisibility);
+  function updateMessageCountRangeVisibility() {
+    messageCountRangeRow.style.display = randomMessageCountCheckbox.checked ? "flex" : "none";
+    messageCountInput.disabled = randomMessageCountCheckbox.checked;
+    messageCountInput.style.opacity = randomMessageCountCheckbox.checked ? "0.5" : "1";
+  }
+  randomMessageCountCheckbox.addEventListener("change", updateMessageCountRangeVisibility);
+  function updateTriggerMode() {
+    const isTime = triggerModeSelect.value === "time";
+    timeSettingsGroup.style.display = isTime ? "flex" : "none";
+    messagesSettingsGroup.style.display = isTime ? "none" : "flex";
+  }
+  triggerModeSelect.addEventListener("change", updateTriggerMode);
   const contextInput = createStyledNumberInput("1", "50", "10");
   configCard.appendChild(createSettingRow("Context Retrieval (messages)", "How many recent story messages the council can see before reacting.", contextInput));
   const saveBtnWrap = document.createElement("div");
@@ -259,10 +323,15 @@ function setup(ctx) {
   saveBtn.addEventListener("click", () => {
     ctx.sendToBackend({
       type: "save_settings",
+      triggerMode: triggerModeSelect.value,
       messageInterval: parseInt(messageIntervalInput.value, 10),
       randomIntervalEnabled: randomToggleCheckbox.checked,
       intervalMin: parseInt(intervalMinInput.value, 10),
       intervalMax: parseInt(intervalMaxInput.value, 10),
+      messageCount: parseInt(messageCountInput.value, 10),
+      randomMessageCountEnabled: randomMessageCountCheckbox.checked,
+      messageCountMin: parseInt(messageCountMinInput.value, 10),
+      messageCountMax: parseInt(messageCountMaxInput.value, 10),
       contextLimit: parseInt(contextInput.value, 10),
       connectionId: connectionSelect.value
     });
@@ -292,11 +361,39 @@ function setup(ctx) {
     .chatroom-msg { animation: msgIn .2s ease-out; }
   `);
   let autoTimer = null;
+  let triggerMode = "time";
   let messageInterval = 10;
   let randomIntervalEnabled = true;
   let intervalMin = 5;
   let intervalMax = 15;
+  let messageCount = 5;
+  let randomMessageCountEnabled = true;
+  let messageCountMin = 3;
+  let messageCountMax = 7;
   let isGenerating = false;
+  function startAutoTimer() {
+    if (autoTimer)
+      clearTimeout(autoTimer);
+    const scheduleNext = () => {
+      let ms;
+      if (randomIntervalEnabled) {
+        ms = intervalMin * 1000 + Math.random() * ((intervalMax - intervalMin) * 1000);
+      } else {
+        ms = messageInterval * 1000;
+      }
+      autoTimer = setTimeout(() => {
+        if (!isGenerating)
+          ctx.sendToBackend({ type: "trigger_generation" });
+        scheduleNext();
+      }, ms);
+    };
+    scheduleNext();
+  }
+  function stopAutoTimer() {
+    if (autoTimer)
+      clearTimeout(autoTimer);
+    autoTimer = null;
+  }
   let isCollapsed = false;
   let isFullscreen = false;
   let preFullscreenState = null;
@@ -669,24 +766,13 @@ function setup(ctx) {
     }
   });
   autoToggle.addEventListener("change", () => {
-    if (autoToggle.checked) {
-      const scheduleNext = () => {
-        let ms;
-        if (randomIntervalEnabled) {
-          ms = intervalMin * 1000 + Math.random() * ((intervalMax - intervalMin) * 1000);
-        } else {
-          ms = messageInterval * 1000;
-        }
-        autoTimer = setTimeout(() => {
-          if (!isGenerating)
-            ctx.sendToBackend({ type: "trigger_generation" });
-          scheduleNext();
-        }, ms);
-      };
-      scheduleNext();
-    } else {
-      if (autoTimer)
-        clearTimeout(autoTimer);
+    ctx.sendToBackend({ type: "set_auto_reply", enabled: autoToggle.checked });
+    if (triggerMode === "time") {
+      if (autoToggle.checked) {
+        startAutoTimer();
+      } else {
+        stopAutoTimer();
+      }
     }
   });
   const sendMessage = () => {
@@ -767,18 +853,36 @@ function setup(ctx) {
   }
   const unsubBackend = ctx.onBackendMessage((payload) => {
     if (payload.type === "settings_loaded") {
+      triggerModeSelect.value = payload.triggerMode ?? "time";
       messageIntervalInput.value = (payload.messageInterval ?? 10).toString();
       randomToggleCheckbox.checked = payload.randomIntervalEnabled ?? true;
       intervalMinInput.value = (payload.intervalMin ?? 5).toString();
       intervalMaxInput.value = (payload.intervalMax ?? 15).toString();
+      messageCountInput.value = (payload.messageCount ?? 5).toString();
+      randomMessageCountCheckbox.checked = payload.randomMessageCountEnabled ?? true;
+      messageCountMinInput.value = (payload.messageCountMin ?? 3).toString();
+      messageCountMaxInput.value = (payload.messageCountMax ?? 7).toString();
       contextInput.value = (payload.contextLimit ?? 10).toString();
+      triggerMode = payload.triggerMode ?? "time";
       messageInterval = payload.messageInterval ?? 10;
       randomIntervalEnabled = payload.randomIntervalEnabled ?? true;
       intervalMin = payload.intervalMin ?? 5;
       intervalMax = payload.intervalMax ?? 15;
-      updateRangeVisibility();
+      messageCount = payload.messageCount ?? 5;
+      randomMessageCountEnabled = payload.randomMessageCountEnabled ?? true;
+      messageCountMin = payload.messageCountMin ?? 3;
+      messageCountMax = payload.messageCountMax ?? 7;
+      updateTriggerMode();
+      updateTimeRangeVisibility();
+      updateMessageCountRangeVisibility();
       if (payload.userPersona) {
         userPersona = payload.userPersona;
+      }
+      autoToggle.checked = payload.autoReply ?? false;
+      if (payload.autoReply && triggerMode === "time") {
+        startAutoTimer();
+      } else if (!payload.autoReply && autoTimer) {
+        stopAutoTimer();
       }
       connectionSelect.innerHTML = '<option value="">Default Active Connection</option>';
       if (payload.connections) {
