@@ -505,6 +505,23 @@ export function setup(ctx: SpindleFrontendContext) {
   // Start hidden until a chat is active
   widget.setVisible(false);
 
+  // Persist widget position/size (skip on mobile)
+  function persistWidgetState() {
+    if (isMobile) return;
+    const pos = widget.getPosition();
+    ctx.sendToBackend({
+      type: 'save_widget_state',
+      x: pos.x,
+      y: pos.y,
+      w: shell.offsetWidth,
+      h: shell.offsetHeight,
+    });
+  }
+
+  widget.onDragEnd(() => {
+    persistWidgetState();
+  });
+
   ctx.dom.addStyle(`
     @keyframes spin { to { transform: rotate(360deg); } }
     @keyframes msgIn { from { opacity:0; transform: translateY(6px) scale(.98); } to { opacity:1; transform: none; } }
@@ -844,6 +861,7 @@ export function setup(ctx: SpindleFrontendContext) {
     document.body.style.cursor = '';
     if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
     try { resizeHandle.releasePointerCapture(e.pointerId); } catch (_) {}
+    persistWidgetState();
   }
 
   function onWindowPointerDown(e: PointerEvent) {
@@ -1140,6 +1158,16 @@ export function setup(ctx: SpindleFrontendContext) {
       } else {
         clearMessages();
         widget.setVisible(false);
+      }
+
+      // Restore persisted widget position/size (desktop only)
+      if (!isMobile && payload.widgetX != null && payload.widgetY != null) {
+        widget.moveTo(payload.widgetX, payload.widgetY);
+      }
+      if (!isMobile && payload.widgetW != null && payload.widgetH != null) {
+        shell.style.setProperty('width', payload.widgetW + 'px', 'important');
+        shell.style.setProperty('height', payload.widgetH + 'px', 'important');
+        expandedHeight = payload.widgetH;
       }
     } else if (payload.type === 'hide_widget') {
       widget.setVisible(false);

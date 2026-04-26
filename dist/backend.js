@@ -260,6 +260,10 @@ spindle.onFrontendMessage(async (payload, userId) => {
     const messageCountMin = await spindle.variables.global.get("chatroom_message_count_min", userId);
     const messageCountMax = await spindle.variables.global.get("chatroom_message_count_max", userId);
     const autoReply = await spindle.variables.global.get("chatroom_auto_reply", userId);
+    const widgetX = await spindle.variables.global.get("chatroom_widget_x", userId);
+    const widgetY = await spindle.variables.global.get("chatroom_widget_y", userId);
+    const widgetW = await spindle.variables.global.get("chatroom_widget_w", userId);
+    const widgetH = await spindle.variables.global.get("chatroom_widget_h", userId);
     let connections = [];
     try {
       if (spindle.permissions.has("generation")) {
@@ -323,7 +327,11 @@ spindle.onFrontendMessage(async (payload, userId) => {
       history,
       hasActiveChat,
       userPersona,
-      autoReply: state.autoReply
+      autoReply: state.autoReply,
+      widgetX: widgetX ? parseInt(widgetX, 10) : null,
+      widgetY: widgetY ? parseInt(widgetY, 10) : null,
+      widgetW: widgetW ? parseInt(widgetW, 10) : null,
+      widgetH: widgetH ? parseInt(widgetH, 10) : null
     }, userId);
     return;
   }
@@ -392,6 +400,17 @@ spindle.onFrontendMessage(async (payload, userId) => {
       spindle.log.error(`Failed to clear chatroom history: ${e.message || String(e)}`);
       spindle.sendToFrontend({ type: "error", message: "Failed to clear chatroom history." }, userId);
     }
+    return;
+  }
+  if (payload.type === "save_widget_state") {
+    if (payload.x != null)
+      await spindle.variables.global.set("chatroom_widget_x", String(Math.round(payload.x)), userId);
+    if (payload.y != null)
+      await spindle.variables.global.set("chatroom_widget_y", String(Math.round(payload.y)), userId);
+    if (payload.w != null)
+      await spindle.variables.global.set("chatroom_widget_w", String(Math.round(payload.w)), userId);
+    if (payload.h != null)
+      await spindle.variables.global.set("chatroom_widget_h", String(Math.round(payload.h)), userId);
     return;
   }
 });
