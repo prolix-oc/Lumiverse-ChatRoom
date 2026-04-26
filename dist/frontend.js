@@ -406,25 +406,30 @@ function setup(ctx) {
   widget.root.appendChild(resizeHandle);
   let isResizing = false;
   let resizeStart = { x: 0, y: 0, w: 0, h: 0 };
-  function startResize(clientX, clientY) {
-    isResizing = true;
-    resizeStart = { x: clientX, y: clientY, w: shell.offsetWidth, h: shell.offsetHeight };
-    document.body.style.cursor = "nwse-resize";
-  }
-  function onWindowPointerDown(e) {
-    const target = e.target;
-    if (!target?.closest?.(".chatroom-resize"))
-      return;
-    e.stopPropagation();
-    e.preventDefault();
-    startResize(e.clientX, e.clientY);
-  }
-  window.addEventListener("pointerdown", onWindowPointerDown, true);
-  window.addEventListener("mousedown", onWindowPointerDown, true);
+  let resizeAnchor = { x: 0, y: 0 };
+  let rafId = null;
   const WIDGET_MIN_W = isMobile ? 260 : 320;
   const WIDGET_MIN_H = isMobile ? 120 : 180;
   const WIDGET_MAX_W = Math.min(900, window.innerWidth - (isMobile ? 8 : 32));
   const WIDGET_MAX_H = Math.min(1000, window.innerHeight - (isMobile ? 32 : 64));
+  function startResize(clientX, clientY) {
+    const pos = widget.getPosition();
+    resizeAnchor = { x: pos.x, y: pos.y };
+    resizeStart = { x: clientX, y: clientY, w: shell.offsetWidth, h: shell.offsetHeight };
+    isResizing = true;
+    document.body.style.cursor = "nwse-resize";
+  }
+  resizeHandle.addEventListener("mousedown", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    startResize(e.clientX, e.clientY);
+  });
+  resizeHandle.addEventListener("touchstart", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const t = e.touches[0];
+    startResize(t.clientX, t.clientY);
+  }, { passive: false });
   function onResizeMove(e) {
     if (!isResizing)
       return;
@@ -438,10 +443,24 @@ function setup(ctx) {
       isCollapsed = false;
       updateCollapse();
     }
+    if (rafId)
+      cancelAnimationFrame(rafId);
+    rafId = requestAnimationFrame(() => {
+      widget.moveTo(resizeAnchor.x, resizeAnchor.y);
+      rafId = null;
+    });
   }
   function onResizeEnd() {
+    if (!isResizing)
+      return;
     isResizing = false;
     document.body.style.cursor = "";
+    if (rafId) {
+      cancelAnimationFrame(rafId);
+      rafId = null;
+    }
+    const ev = new PointerEvent("pointerup", { bubbles: true, cancelable: true });
+    widget.root.dispatchEvent(ev);
   }
   document.addEventListener("mousemove", onResizeMove);
   document.addEventListener("mouseup", onResizeEnd);
@@ -652,6 +671,10 @@ function setup(ctx) {
   return () => {
     if (autoTimer)
       clearTimeout(autoTimer);
+    document.removeEventListener("mousemove", onResizeMove);
+    document.removeEventListener("mouseup", onResizeEnd);
+    document.removeEventListener("touchmove", onResizeMove);
+    document.removeEventListener("touchend", onResizeEnd);
     unsubBackend();
     widget.destroy();
     tab.destroy();
