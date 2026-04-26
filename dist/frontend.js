@@ -196,6 +196,7 @@ function setup(ctx) {
   let isGenerating = false;
   let isCollapsed = false;
   let isFullscreen = false;
+  let preFullscreenState = null;
   let expandedHeight = 620;
   let unreadCount = 0;
   let lastSenderId = null;
