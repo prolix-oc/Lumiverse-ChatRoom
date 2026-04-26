@@ -50,6 +50,25 @@ function setup(ctx) {
   configTitle.style.margin = "0";
   configTitle.style.fontSize = "14px";
   configSection.appendChild(configTitle);
+  const connectionRow = document.createElement("div");
+  connectionRow.style.display = "flex";
+  connectionRow.style.flexDirection = "column";
+  connectionRow.style.gap = "4px";
+  const connectionLabel = document.createElement("label");
+  connectionLabel.textContent = "Generation Connection Profile";
+  connectionLabel.style.fontSize = "13px";
+  connectionLabel.style.fontWeight = "500";
+  connectionRow.appendChild(connectionLabel);
+  const connectionSelect = document.createElement("select");
+  connectionSelect.style.padding = "6px";
+  connectionSelect.style.border = "1px solid var(--lumiverse-border)";
+  connectionSelect.style.borderRadius = "var(--lumiverse-radius)";
+  connectionSelect.style.background = "var(--lumiverse-fill)";
+  connectionSelect.style.color = "var(--lumiverse-text)";
+  connectionSelect.style.fontSize = "13px";
+  connectionSelect.style.outline = "none";
+  connectionRow.appendChild(connectionSelect);
+  configSection.appendChild(connectionRow);
   const intervalRow = document.createElement("div");
   intervalRow.style.display = "flex";
   intervalRow.style.flexDirection = "column";
@@ -129,8 +148,10 @@ function setup(ctx) {
       type: "save_settings",
       intervalMin: parseInt(intervalMinInput.value, 10),
       intervalMax: parseInt(intervalMaxInput.value, 10),
-      contextLimit: parseInt(contextInput.value, 10)
+      contextLimit: parseInt(contextInput.value, 10),
+      connectionId: connectionSelect.value
     });
+    ctx.dom.addStyle("");
   });
   configSection.appendChild(saveBtn);
   settingsContainer.appendChild(configSection);
@@ -367,6 +388,16 @@ function setup(ctx) {
       contextInput.value = payload.contextLimit.toString();
       intervalMin = payload.intervalMin;
       intervalMax = payload.intervalMax;
+      connectionSelect.innerHTML = '<option value="">Default Active Connection</option>';
+      if (payload.connections) {
+        for (const conn of payload.connections) {
+          const opt = document.createElement("option");
+          opt.value = conn.id;
+          opt.textContent = `${conn.name} (${conn.provider})`;
+          connectionSelect.appendChild(opt);
+        }
+      }
+      connectionSelect.value = payload.connectionId || "";
     } else if (payload.type === "new_message") {
       appendMessage(payload.name, payload.username || payload.name, payload.content, payload.avatarUrl, payload.isUser);
     } else if (payload.type === "error") {

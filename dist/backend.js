@@ -6,17 +6,30 @@ spindle.onFrontendMessage(async (payload, userId) => {
     await spindle.variables.global.set("chatroom_interval_min", payload.intervalMin.toString(), userId);
     await spindle.variables.global.set("chatroom_interval_max", payload.intervalMax.toString(), userId);
     await spindle.variables.global.set("chatroom_context_limit", payload.contextLimit.toString(), userId);
+    await spindle.variables.global.set("chatroom_connection_id", payload.connectionId || "", userId);
+    spindle.toast.success("Chatroom configuration saved.", userId);
     return;
   }
   if (payload.type === "load_settings") {
     const min = await spindle.variables.global.get("chatroom_interval_min", userId);
     const max = await spindle.variables.global.get("chatroom_interval_max", userId);
     const ctxLimit = await spindle.variables.global.get("chatroom_context_limit", userId);
+    const connId = await spindle.variables.global.get("chatroom_connection_id", userId);
+    let connections = [];
+    try {
+      if (spindle.permissions.has("generation")) {
+        connections = await spindle.connections.list(userId);
+      }
+    } catch (err) {
+      spindle.log.warn("Could not fetch connections for chatroom overlay settings.");
+    }
     spindle.sendToFrontend({
       type: "settings_loaded",
       intervalMin: min ? parseInt(min, 10) : 5,
       intervalMax: max ? parseInt(max, 10) : 15,
-      contextLimit: ctxLimit ? parseInt(ctxLimit, 10) : 10
+      contextLimit: ctxLimit ? parseInt(ctxLimit, 10) : 10,
+      connectionId: connId,
+      connections
     }, userId);
     return;
   }
@@ -75,8 +88,10 @@ MemberName (Username): The message content
         { role: "system", content: systemPrompt },
         ...chatroomHistory.slice(-20)
       ];
+      const connId = await spindle.variables.global.get("chatroom_connection_id", userId);
       const result = await spindle.generate.quiet({
-        messages: promptMessages
+        messages: promptMessages,
+        ...connId ? { connection_id: connId } : {}
       });
       const text = result.content;
       chatroomHistory.push({ role: "assistant", content: text });
