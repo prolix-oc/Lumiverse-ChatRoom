@@ -601,6 +601,16 @@ export function setup(ctx: SpindleFrontendContext) {
       shell.style.removeProperty('opacity');
       shell.style.removeProperty('visibility');
       shell.style.removeProperty('pointer-events');
+      // Recover from hosts that squash the shell to 2×2px when hidden
+      const w = shell.offsetWidth;
+      const h = shell.offsetHeight;
+      if (w < 50 || h < 50) {
+        const defaultW = isMobile ? Math.min(380, window.innerWidth - 16) : 440;
+        const defaultH = isMobile ? Math.min(540, window.innerHeight - 80) : 620;
+        shell.style.setProperty('width', defaultW + 'px', 'important');
+        shell.style.setProperty('height', (isCollapsed ? header.offsetHeight : defaultH) + 'px', 'important');
+        if (!isCollapsed) expandedHeight = defaultH;
+      }
     } else {
       shell.style.opacity = '0';
       shell.style.visibility = 'hidden';
