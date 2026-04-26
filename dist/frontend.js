@@ -26,7 +26,15 @@ function setup(ctx) {
   descEl.style.margin = "0";
   descEl.style.lineHeight = "1.4";
   settingsContainer.appendChild(descEl);
+  function makeInteractive(el) {
+    const stop = (e) => e.stopPropagation();
+    el.addEventListener("mousedown", stop);
+    el.addEventListener("touchstart", stop, { passive: true });
+    el.addEventListener("pointerdown", stop);
+    el.addEventListener("click", stop);
+  }
   const toggleBtn = document.createElement("button");
+  makeInteractive(toggleBtn);
   toggleBtn.textContent = "Toggle Overlay Visibility";
   toggleBtn.style.padding = "8px 12px";
   toggleBtn.style.background = "var(--lumiverse-fill-subtle)";
@@ -60,6 +68,7 @@ function setup(ctx) {
   connectionLabel.style.fontWeight = "500";
   connectionRow.appendChild(connectionLabel);
   const connectionSelect = document.createElement("select");
+  makeInteractive(connectionSelect);
   connectionSelect.style.padding = "6px";
   connectionSelect.style.border = "1px solid var(--lumiverse-border)";
   connectionSelect.style.borderRadius = "var(--lumiverse-radius)";
@@ -83,6 +92,7 @@ function setup(ctx) {
   intervalInputs.style.gap = "8px";
   intervalInputs.style.alignItems = "center";
   const intervalMinInput = document.createElement("input");
+  makeInteractive(intervalMinInput);
   intervalMinInput.type = "number";
   intervalMinInput.min = "1";
   intervalMinInput.max = "60";
@@ -94,6 +104,7 @@ function setup(ctx) {
   intervalMinInput.style.background = "var(--lumiverse-fill)";
   intervalMinInput.style.color = "var(--lumiverse-text)";
   const intervalMaxInput = document.createElement("input");
+  makeInteractive(intervalMaxInput);
   intervalMaxInput.type = "number";
   intervalMaxInput.min = "1";
   intervalMaxInput.max = "120";
@@ -119,6 +130,7 @@ function setup(ctx) {
   contextLabel.style.fontWeight = "500";
   contextRow.appendChild(contextLabel);
   const contextInput = document.createElement("input");
+  makeInteractive(contextInput);
   contextInput.type = "number";
   contextInput.min = "1";
   contextInput.max = "50";
@@ -132,6 +144,7 @@ function setup(ctx) {
   contextRow.appendChild(contextInput);
   configSection.appendChild(contextRow);
   const saveBtn = document.createElement("button");
+  makeInteractive(saveBtn);
   saveBtn.textContent = "Save Configuration";
   saveBtn.style.padding = "8px 12px";
   saveBtn.style.background = "var(--lumiverse-primary)";
@@ -233,6 +246,7 @@ function setup(ctx) {
   inputRow.style.display = "flex";
   inputRow.style.gap = "8px";
   const inputField = document.createElement("input");
+  makeInteractive(inputField);
   inputField.type = "text";
   inputField.placeholder = "Type a message...";
   inputField.style.flex = "1";
@@ -243,10 +257,9 @@ function setup(ctx) {
   inputField.style.color = "var(--lumiverse-text)";
   inputField.style.fontSize = "13px";
   inputField.style.outline = "none";
-  inputField.addEventListener("mousedown", (e) => {
-    e.stopPropagation();
-  });
+  inputField.addEventListener("pointerdown", () => inputField.focus());
   const sendButton = document.createElement("button");
+  makeInteractive(sendButton);
   sendButton.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>`;
   sendButton.style.display = "flex";
   sendButton.style.alignItems = "center";
@@ -293,11 +306,15 @@ function setup(ctx) {
   autoToggleLabel.style.alignItems = "center";
   autoToggleLabel.style.cursor = "pointer";
   autoToggleLabel.style.userSelect = "none";
+  autoToggleLabel.addEventListener("mousedown", (e) => {
+    e.stopPropagation();
+  });
   const autoToggle = document.createElement("input");
   autoToggle.type = "checkbox";
   autoToggleLabel.appendChild(autoToggle);
   autoToggleLabel.appendChild(document.createTextNode("Auto-reply interval"));
   const genButton = document.createElement("button");
+  makeInteractive(genButton);
   genButton.textContent = "Generate";
   genButton.style.padding = "4px 10px";
   genButton.style.borderRadius = "var(--lumiverse-radius)";

@@ -32,7 +32,16 @@ export function setup(ctx: SpindleFrontendContext) {
   descEl.style.lineHeight = '1.4';
   settingsContainer.appendChild(descEl);
 
+  function makeInteractive(el: HTMLElement) {
+    const stop = (e: Event) => e.stopPropagation();
+    el.addEventListener('mousedown', stop);
+    el.addEventListener('touchstart', stop, { passive: true });
+    el.addEventListener('pointerdown', stop);
+    el.addEventListener('click', stop);
+  }
+
   const toggleBtn = document.createElement('button');
+  makeInteractive(toggleBtn);
   toggleBtn.textContent = 'Toggle Overlay Visibility';
   toggleBtn.style.padding = '8px 12px';
   toggleBtn.style.background = 'var(--lumiverse-fill-subtle)';
@@ -72,6 +81,7 @@ export function setup(ctx: SpindleFrontendContext) {
   connectionRow.appendChild(connectionLabel);
 
   const connectionSelect = document.createElement('select');
+  makeInteractive(connectionSelect);
   connectionSelect.style.padding = '6px';
   connectionSelect.style.border = '1px solid var(--lumiverse-border)';
   connectionSelect.style.borderRadius = 'var(--lumiverse-radius)';
@@ -100,6 +110,7 @@ export function setup(ctx: SpindleFrontendContext) {
   intervalInputs.style.alignItems = 'center';
 
   const intervalMinInput = document.createElement('input');
+  makeInteractive(intervalMinInput);
   intervalMinInput.type = 'number';
   intervalMinInput.min = '1';
   intervalMinInput.max = '60';
@@ -112,6 +123,7 @@ export function setup(ctx: SpindleFrontendContext) {
   intervalMinInput.style.color = 'var(--lumiverse-text)';
 
   const intervalMaxInput = document.createElement('input');
+  makeInteractive(intervalMaxInput);
   intervalMaxInput.type = 'number';
   intervalMaxInput.min = '1';
   intervalMaxInput.max = '120';
@@ -142,6 +154,7 @@ export function setup(ctx: SpindleFrontendContext) {
   contextRow.appendChild(contextLabel);
 
   const contextInput = document.createElement('input');
+  makeInteractive(contextInput);
   contextInput.type = 'number';
   contextInput.min = '1';
   contextInput.max = '50';
@@ -156,6 +169,7 @@ export function setup(ctx: SpindleFrontendContext) {
   configSection.appendChild(contextRow);
 
   const saveBtn = document.createElement('button');
+  makeInteractive(saveBtn);
   saveBtn.textContent = 'Save Configuration';
   saveBtn.style.padding = '8px 12px';
   saveBtn.style.background = 'var(--lumiverse-primary)';
@@ -276,6 +290,7 @@ export function setup(ctx: SpindleFrontendContext) {
   inputRow.style.gap = '8px';
 
   const inputField = document.createElement('input');
+  makeInteractive(inputField);
   inputField.type = 'text';
   inputField.placeholder = 'Type a message...';
   inputField.style.flex = '1';
@@ -287,15 +302,13 @@ export function setup(ctx: SpindleFrontendContext) {
   inputField.style.fontSize = '13px';
   inputField.style.outline = 'none';
 
-  // FIX: Make sure the input actually catches events properly and stops propagation
-  // if it's trapped in a draggable container. The float widget shouldn't trap clicks natively
-  // but if it's not gaining focus, explicitly calling focus() on click may help, or stopping propagation on mousedown.
-  inputField.addEventListener('mousedown', (e) => {
-    e.stopPropagation();
-  });
+  // Make sure clicking focuses the input correctly inside a float widget
+  inputField.addEventListener('pointerdown', () => inputField.focus());
 
   const sendButton = document.createElement('button');
+  makeInteractive(sendButton);
   sendButton.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>`;
+
   sendButton.style.display = 'flex';
   sendButton.style.alignItems = 'center';
   sendButton.style.justifyContent = 'center';
@@ -356,6 +369,7 @@ export function setup(ctx: SpindleFrontendContext) {
   autoToggleLabel.appendChild(document.createTextNode('Auto-reply interval'));
 
   const genButton = document.createElement('button');
+  makeInteractive(genButton);
   genButton.textContent = 'Generate';
   genButton.style.padding = '4px 10px';
   genButton.style.borderRadius = 'var(--lumiverse-radius)';
