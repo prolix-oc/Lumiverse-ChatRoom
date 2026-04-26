@@ -400,9 +400,12 @@ spindle.on("MESSAGE_SENT", async (payload) => {
     spindle.log.error(`Message trigger error: ${e.message || String(e)}`);
   }
 });
-spindle.on("CHAT_CHANGED", async (payload) => {
+spindle.on("SETTINGS_UPDATED", async (payload) => {
   const state = getUserState();
-  const newChatId = payload?.chatId ?? null;
+  const key = payload?.key ?? payload?.keys?.[0] ?? null;
+  if (key !== "activeChatId")
+    return;
+  const newChatId = payload?.value ?? null;
   if (!newChatId) {
     state.currentChatId = null;
     spindle.sendToFrontend({ type: "hide_widget" });

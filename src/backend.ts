@@ -503,9 +503,15 @@ spindle.on('MESSAGE_SENT', async (payload: any) => {
 });
 
 // Hide or show the chatroom when the user switches chats
-spindle.on('CHAT_CHANGED', async (payload: any) => {
+// CHAT_CHANGED only fires when chat *data* changes, not when active chat switches.
+// Active chat switches are communicated via SETTINGS_UPDATED with key === 'activeChatId'.
+spindle.on('SETTINGS_UPDATED', async (payload: any) => {
   const state = getUserState();
-  const newChatId = payload?.chatId ?? null;
+  const key = payload?.key ?? payload?.keys?.[0] ?? null;
+
+  if (key !== 'activeChatId') return;
+
+  const newChatId = payload?.value ?? null;
 
   if (!newChatId) {
     // User went back to home screen — hide the widget
