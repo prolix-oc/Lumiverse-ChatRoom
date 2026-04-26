@@ -324,7 +324,27 @@ export function setup(ctx: SpindleFrontendContext) {
   sendButton.addEventListener('mouseenter', () => sendButton.style.opacity = '0.9');
   sendButton.addEventListener('mouseleave', () => sendButton.style.opacity = '1');
   
+  let autoTimer: any = null;
+  let intervalMin = 5;
+  let intervalMax = 15;
   let isGenerating = false;
+
+  autoToggle.addEventListener('change', (e) => {
+    if (autoToggle.checked) {
+      const scheduleNext = () => {
+        const nextMs = (intervalMin * 1000) + Math.random() * ((intervalMax - intervalMin) * 1000);
+        autoTimer = setTimeout(() => {
+          if (!isGenerating) {
+            ctx.sendToBackend({ type: 'trigger_generation' });
+          }
+          scheduleNext();
+        }, nextMs);
+      };
+      scheduleNext();
+    } else {
+      if (autoTimer) clearTimeout(autoTimer);
+    }
+  });
 
   const sendMessage = () => {
     if (isGenerating) return;
@@ -337,6 +357,11 @@ export function setup(ctx: SpindleFrontendContext) {
   sendButton.addEventListener('click', sendMessage);
   inputField.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') sendMessage();
+  });
+
+  genButton.addEventListener('click', () => {
+    if (isGenerating) return;
+    ctx.sendToBackend({ type: 'trigger_generation' });
   });
 
   inputRow.appendChild(inputField);
@@ -378,35 +403,12 @@ export function setup(ctx: SpindleFrontendContext) {
   genButton.style.transition = 'background 0.2s';
   genButton.addEventListener('mouseenter', () => genButton.style.background = 'var(--lumiverse-fill-hover)');
   genButton.addEventListener('mouseleave', () => genButton.style.background = 'var(--lumiverse-fill-subtle)');
-  genButton.addEventListener('click', () => {
-    if (isGenerating) return;
-    ctx.sendToBackend({ type: 'trigger_generation' });
-  });
 
   toolsRow.appendChild(autoToggleLabel);
   toolsRow.appendChild(genButton);
   controls.appendChild(toolsRow);
 
   widget.root.appendChild(controls);
-
-  let autoTimer: any = null;
-  let intervalMin = 5;
-  let intervalMax = 15;
-
-  autoToggle.addEventListener('change', (e) => {
-    if (autoToggle.checked) {
-      const scheduleNext = () => {
-        const nextMs = (intervalMin * 1000) + Math.random() * ((intervalMax - intervalMin) * 1000);
-        autoTimer = setTimeout(() => {
-          if (!isGenerating) ctx.sendToBackend({ type: 'trigger_generation' });
-          scheduleNext();
-        }, nextMs);
-      };
-      scheduleNext();
-    } else {
-      if (autoTimer) clearTimeout(autoTimer);
-    }
-  });
 
   // Function to append a message
   function appendMessage(name: string, username: string, content: string, avatarUrl: string | null, isUser: boolean = false) {
