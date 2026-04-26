@@ -914,8 +914,12 @@ function setup(ctx) {
       if (payload.history && payload.history.length > 0) {
         loadHistory(payload.history);
         widget.setVisible(true);
-      } else if (payload.history && payload.history.length === 0) {
+      } else if (payload.hasActiveChat) {
         clearMessages();
+        widget.setVisible(true);
+      } else {
+        clearMessages();
+        widget.setVisible(false);
       }
     } else if (payload.type === "hide_widget") {
       widget.setVisible(false);

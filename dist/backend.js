@@ -1,7 +1,9 @@
 // src/backend.ts
 var userStates = new Map;
+var activeUserId = null;
 function getUserState(userId) {
-  if (!userStates.has(userId)) {
+  const key = userId || activeUserId || "default";
+  if (!userStates.has(key)) {
     const state = {
       autoReply: false,
       messageCounter: 0,
@@ -14,10 +16,10 @@ function getUserState(userId) {
       isGenerating: false,
       currentChatId: null
     };
-    userStates.set(userId, state);
+    userStates.set(key, state);
     return state;
   }
-  return userStates.get(userId);
+  return userStates.get(key);
 }
 function recalcMessageTarget(state) {
   if (state.randomMessageCountEnabled) {
@@ -58,7 +60,7 @@ async function runCouncilGeneration(userId) {
   spindle.log.info("Starting generation trigger processing");
   if (!spindle.permissions.has("generation")) {
     spindle.log.warn("Generation permission not granted");
-    spindle.sendToFrontend({ type: "error", message: "Generation permission not granted" }, userId);
+    spindle.sendToFrontend({ type: "error", message: "Generation permission not granted" });
     state.isGenerating = false;
     return;
   }
@@ -67,7 +69,7 @@ async function runCouncilGeneration(userId) {
     const activeChat = await spindle.chats.getActive(userId);
     if (!activeChat) {
       spindle.log.warn("No active chat found");
-      spindle.sendToFrontend({ type: "error", message: "No active chat to monitor." }, userId);
+      spindle.sendToFrontend({ type: "error", message: "No active chat to monitor." });
       state.isGenerating = false;
       return;
     }
@@ -82,7 +84,7 @@ async function runCouncilGeneration(userId) {
     const councilMembers = await spindle.council.getMembers({ userId });
     if (councilMembers.length === 0) {
       spindle.log.warn("No council members assigned");
-      spindle.sendToFrontend({ type: "error", message: "No council members assigned." }, userId);
+      spindle.sendToFrontend({ type: "error", message: "No council members assigned." });
       state.isGenerating = false;
       return;
     }
@@ -123,7 +125,7 @@ MemberName (Username): The message content
     }
     if (!conn) {
       spindle.log.error("No connection profile available");
-      spindle.sendToFrontend({ type: "error", message: "No connection profile available." }, userId);
+      spindle.sendToFrontend({ type: "error", message: "No connection profile available." });
       state.isGenerating = false;
       return;
     }
@@ -151,7 +153,7 @@ MemberName (Username): The message content
         spindle.log.warn(`Token count failed, skipping context clipping: ${e.message || String(e)}`);
       }
     }
-    spindle.sendToFrontend({ type: "generation_started" }, userId);
+    spindle.sendToFrontend({ type: "generation_started" });
     const stream = spindle.generate.rawStream({
       type: "raw",
       provider: conn.provider,
@@ -200,20 +202,23 @@ MemberName (Username): The message content
         content: uiMsg.content,
         avatarUrl: uiMsg.avatarUrl,
         isUser: uiMsg.isUser
-      }, userId);
+      });
     }
     await saveChatroomHistory(chatId, chatroomHistory);
     spindle.log.info("Successfully dispatched messages to frontend.");
-    spindle.sendToFrontend({ type: "generation_ended" }, userId);
+    spindle.sendToFrontend({ type: "generation_ended" });
   } catch (e) {
     spindle.log.error(`Generation error: ${e.message || String(e)}`);
-    spindle.sendToFrontend({ type: "generation_ended" }, userId);
-    spindle.sendToFrontend({ type: "error", message: e.message || String(e) }, userId);
+    spindle.sendToFrontend({ type: "generation_ended" });
+    spindle.sendToFrontend({ type: "error", message: e.message || String(e) });
   } finally {
     state.isGenerating = false;
   }
 }
 spindle.onFrontendMessage(async (payload, userId) => {
+  if (userId) {
+    activeUserId = userId;
+  }
   if (payload.type === "save_settings") {
     await spindle.variables.global.set("chatroom_message_interval", (payload.messageInterval ?? 10).toString(), userId);
     await spindle.variables.global.set("chatroom_random_interval_enabled", (payload.randomIntervalEnabled ?? true).toString(), userId);
@@ -290,9 +295,11 @@ spindle.onFrontendMessage(async (payload, userId) => {
     state.messageCountMax = messageCountMax ? parseInt(messageCountMax, 10) : 7;
     recalcMessageTarget(state);
     let history = [];
+    let hasActiveChat = false;
     try {
       const activeChat = await spindle.chats.getActive(userId);
       if (activeChat) {
+        hasActiveChat = true;
         history = await getChatroomHistory(activeChat.id);
       }
     } catch (e) {
@@ -314,6 +321,7 @@ spindle.onFrontendMessage(async (payload, userId) => {
       connectionId: connId,
       connections,
       history,
+      hasActiveChat,
       userPersona,
       autoReply: state.autoReply
     }, userId);
@@ -371,42 +379,38 @@ spindle.onFrontendMessage(async (payload, userId) => {
     return;
   }
 });
-spindle.on("MESSAGE_SENT", async (payload, eventUserId) => {
-  if (!eventUserId)
-    return;
-  const state = getUserState(eventUserId);
+spindle.on("MESSAGE_SENT", async (payload) => {
+  const state = getUserState();
   if (state.triggerMode !== "messages" || !state.autoReply)
     return;
   try {
-    const activeChat = await spindle.chats.getActive(eventUserId);
+    const activeChat = await spindle.chats.getActive();
     const eventChatId = payload?.chatId || payload?.chat_id;
     if (!activeChat || activeChat.id !== eventChatId)
       return;
     state.messageCounter++;
-    spindle.log.info(`Message-based auto-reply counter: ${state.messageCounter}/${state.messageTarget} for user ${eventUserId}`);
+    spindle.log.info(`Message-based auto-reply counter: ${state.messageCounter}/${state.messageTarget}`);
     if (state.messageCounter >= state.messageTarget) {
       state.messageCounter = 0;
       recalcMessageTarget(state);
       spindle.log.info("Message target reached. Triggering council generation.");
-      await runCouncilGeneration(eventUserId);
+      await runCouncilGeneration();
     }
   } catch (e) {
     spindle.log.error(`Message trigger error: ${e.message || String(e)}`);
   }
 });
-spindle.on("CHAT_CHANGED", async (payload, eventUserId) => {
-  if (!eventUserId)
-    return;
-  const state = getUserState(eventUserId);
-  const newChatId = payload?.chatId ?? payload?.chat_id ?? null;
+spindle.on("CHAT_CHANGED", async (payload) => {
+  const state = getUserState();
+  const newChatId = payload?.chatId ?? null;
   if (!newChatId) {
     state.currentChatId = null;
-    spindle.sendToFrontend({ type: "hide_widget" }, eventUserId);
+    spindle.sendToFrontend({ type: "hide_widget" });
     return;
   }
   if (state.currentChatId !== newChatId) {
     state.currentChatId = newChatId;
     const history = await getChatroomHistory(newChatId);
-    spindle.sendToFrontend({ type: "chat_changed", history }, eventUserId);
+    spindle.sendToFrontend({ type: "chat_changed", history });
   }
 });
