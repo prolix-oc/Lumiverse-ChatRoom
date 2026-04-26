@@ -456,6 +456,13 @@ function setup(ctx) {
         }
       }
       connectionSelect.value = payload.connectionId || "";
+      if (payload.history) {
+        messageList.innerHTML = "";
+        messageList.appendChild(loadingIndicator);
+        for (const msg of payload.history) {
+          appendMessage(msg.name, msg.username, msg.content, msg.avatarUrl, msg.isUser);
+        }
+      }
     } else if (payload.type === "generation_started") {
       isGenerating = true;
       genButton.disabled = true;

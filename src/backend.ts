@@ -3,6 +3,7 @@ declare const spindle: SpindleAPI;
 
 // Keep track of the chatroom history so the council members remember what they said
 const chatroomHistory: { role: 'system' | 'user' | 'assistant', content: string }[] = [];
+const uiMessages: { name: string, username: string, content: string, avatarUrl: string | null, isUser: boolean }[] = [];
 
 spindle.onFrontendMessage(async (payload, userId) => {
   if (payload.type === 'save_settings') {
@@ -36,7 +37,8 @@ spindle.onFrontendMessage(async (payload, userId) => {
       intervalMax: max ? parseInt(max, 10) : 15,
       contextLimit: ctxLimit ? parseInt(ctxLimit, 10) : 10,
       connectionId: connId,
-      connections: connections
+      connections: connections,
+      history: uiMessages
     }, userId);
     return;
   }
@@ -46,14 +48,19 @@ spindle.onFrontendMessage(async (payload, userId) => {
     // A message from the user specifically to the council
     chatroomHistory.push({ role: 'user', content: `[User Message in Chatroom]: ${payload.content}` });
     
-    // Broadcast back so it renders
-    spindle.sendToFrontend({
-      type: 'new_message',
+    const uiMsg = {
       name: 'The User',
       username: 'User',
       content: payload.content,
       avatarUrl: null,
       isUser: true
+    };
+    uiMessages.push(uiMsg);
+
+    // Broadcast back so it renders
+    spindle.sendToFrontend({
+      type: 'new_message',
+      ...uiMsg
     }, userId);
 
     // Auto-generate a reply for user messages
@@ -190,13 +197,18 @@ MemberName (Username): The message content
         const speaker = councilMembers.find(m => m.name.toLowerCase() === speakerName.toLowerCase());
         const avatarUrl = speaker ? speaker.avatarUrl : null;
 
-        spindle.sendToFrontend({
-          type: 'new_message',
+        const uiMsg = {
           name: speakerName,
           username: username || speakerName,
           content: content,
           avatarUrl: avatarUrl,
           isUser: false
+        };
+        uiMessages.push(uiMsg);
+
+        spindle.sendToFrontend({
+          type: 'new_message',
+          ...uiMsg
         }, userId);
       }
       

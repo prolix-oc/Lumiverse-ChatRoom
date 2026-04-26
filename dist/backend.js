@@ -1,6 +1,7 @@
 // @bun
 // src/backend.ts
 var chatroomHistory = [];
+var uiMessages = [];
 spindle.onFrontendMessage(async (payload, userId) => {
   if (payload.type === "save_settings") {
     await spindle.variables.global.set("chatroom_interval_min", payload.intervalMin.toString(), userId);
@@ -29,20 +30,25 @@ spindle.onFrontendMessage(async (payload, userId) => {
       intervalMax: max ? parseInt(max, 10) : 15,
       contextLimit: ctxLimit ? parseInt(ctxLimit, 10) : 10,
       connectionId: connId,
-      connections
+      connections,
+      history: uiMessages
     }, userId);
     return;
   }
   if (payload.type === "user_message") {
     spindle.log.info("Received user_message trigger");
     chatroomHistory.push({ role: "user", content: `[User Message in Chatroom]: ${payload.content}` });
-    spindle.sendToFrontend({
-      type: "new_message",
+    const uiMsg = {
       name: "The User",
       username: "User",
       content: payload.content,
       avatarUrl: null,
       isUser: true
+    };
+    uiMessages.push(uiMsg);
+    spindle.sendToFrontend({
+      type: "new_message",
+      ...uiMsg
     }, userId);
     payload.type = "trigger_generation";
   }
@@ -146,13 +152,17 @@ MemberName (Username): The message content
         }
         const speaker = councilMembers.find((m) => m.name.toLowerCase() === speakerName.toLowerCase());
         const avatarUrl = speaker ? speaker.avatarUrl : null;
-        spindle.sendToFrontend({
-          type: "new_message",
+        const uiMsg = {
           name: speakerName,
           username: username || speakerName,
           content,
           avatarUrl,
           isUser: false
+        };
+        uiMessages.push(uiMsg);
+        spindle.sendToFrontend({
+          type: "new_message",
+          ...uiMsg
         }, userId);
       }
       spindle.log.info("Successfully dispatched messages to frontend.");

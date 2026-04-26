@@ -534,6 +534,16 @@ export function setup(ctx: SpindleFrontendContext) {
         }
       }
       connectionSelect.value = payload.connectionId || '';
+
+      // Replay history
+      if (payload.history) {
+        // Clear message list before rendering history
+        messageList.innerHTML = '';
+        messageList.appendChild(loadingIndicator);
+        for (const msg of payload.history) {
+          appendMessage(msg.name, msg.username, msg.content, msg.avatarUrl, msg.isUser);
+        }
+      }
       
     } else if (payload.type === 'generation_started') {
       isGenerating = true;
