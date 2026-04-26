@@ -425,8 +425,8 @@ function setup(ctx) {
       return;
     const nw = Math.max(WIDGET_MIN_W, Math.min(WIDGET_MAX_W, resizeStart.w + (e.clientX - resizeStart.x)));
     const nh = Math.max(WIDGET_MIN_H, Math.min(WIDGET_MAX_H, resizeStart.h + (e.clientY - resizeStart.y)));
-    shell.style.width = nw + "px";
-    shell.style.height = nh + "px";
+    shell.style.setProperty("width", nw + "px", "important");
+    shell.style.setProperty("height", nh + "px", "important");
     if (isCollapsed) {
       isCollapsed = false;
       updateCollapse();
@@ -468,7 +468,7 @@ function setup(ctx) {
       body.style.display = "none";
       collapseBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>`;
       collapseBtn.title = "Expand";
-      shell.style.height = header.offsetHeight + "px";
+      shell.style.setProperty("height", header.offsetHeight + "px", "important");
       if (unreadCount > 0) {
         badge.textContent = unreadCount > 99 ? "99+" : String(unreadCount);
         badge.style.display = "block";
@@ -478,7 +478,7 @@ function setup(ctx) {
       collapseBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>`;
       collapseBtn.title = "Collapse";
       if (!isFullscreen)
-        shell.style.height = expandedHeight + "px";
+        shell.style.setProperty("height", expandedHeight + "px", "important");
       badge.style.display = "none";
       unreadCount = 0;
     }
@@ -493,8 +493,8 @@ function setup(ctx) {
     if (isFullscreen) {
       isFullscreen = false;
       if (preFullscreenState) {
-        shell.style.width = preFullscreenState.w + "px";
-        shell.style.height = preFullscreenState.h + "px";
+        shell.style.removeProperty("width");
+        shell.style.removeProperty("height");
         widget.moveTo(preFullscreenState.x, preFullscreenState.y);
       }
       fsBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>`;
@@ -505,8 +505,8 @@ function setup(ctx) {
       isCollapsed = false;
       updateCollapse();
       const pad = isMobile ? 4 : 20;
-      shell.style.width = window.innerWidth - pad * 2 + "px";
-      shell.style.height = window.innerHeight - pad * 2 + "px";
+      shell.style.setProperty("width", window.innerWidth - pad * 2 + "px", "important");
+      shell.style.setProperty("height", window.innerHeight - pad * 2 + "px", "important");
       widget.moveTo(pad, pad);
       fsBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3"/></svg>`;
       fsBtn.title = "Exit Fullscreen";
