@@ -90,7 +90,7 @@ spindle.onFrontendMessage(async (payload, userId) => {
       const ctxLimitStr = await spindle.variables.global.get('chatroom_context_limit', userId);
       const contextLimit = ctxLimitStr ? parseInt(ctxLimitStr, 10) : 10;
       
-      const messages = await spindle.chat.getMessages(activeChat.id, userId);
+      const messages = await spindle.chat.getMessages(activeChat.id);
       const recentMessages = messages.slice(-contextLimit);
       const chatContext = recentMessages.map(m => `${m.name || m.role}: ${m.content}`).join('\\n');
 
@@ -156,6 +156,7 @@ MemberName (Username): The message content
       spindle.sendToFrontend({ type: 'generation_started' }, userId);
 
       const stream = spindle.generate.rawStream({
+        type: 'raw',
         provider: conn.provider,
         model: conn.model,
         connection_id: conn.id,
@@ -182,7 +183,7 @@ MemberName (Username): The message content
         if (!chunk.trim()) continue;
 
         // Parse "Name (Username): message" or fallback to "Name: message"
-        const match = chunk.trim().match(/^([^:(]+)(?:\\s*\\(([^)]+)\\))?:\\s*(.*)$/s);
+        const match = chunk.trim().match(/^([^:(]+)(?:\s*\(([^)]+)\))?:\s*(.*)$/s);
         
         let speakerName = 'Unknown';
         let username = '';

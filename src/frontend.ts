@@ -338,46 +338,7 @@ export function setup(ctx: SpindleFrontendContext) {
   let intervalMax = 15;
   let isGenerating = false;
 
-  autoToggle.addEventListener('change', (e) => {
-    if (autoToggle.checked) {
-      const scheduleNext = () => {
-        const nextMs = (intervalMin * 1000) + Math.random() * ((intervalMax - intervalMin) * 1000);
-        autoTimer = setTimeout(() => {
-          if (!isGenerating) {
-            ctx.sendToBackend({ type: 'trigger_generation' });
-          }
-          scheduleNext();
-        }, nextMs);
-      };
-      scheduleNext();
-    } else {
-      if (autoTimer) clearTimeout(autoTimer);
-    }
-  });
-
-  const sendMessage = () => {
-    if (isGenerating) return;
-    const text = inputField.value.trim();
-    if (!text) return;
-    inputField.value = '';
-    ctx.sendToBackend({ type: 'user_message', content: text });
-  };
-  
-  sendButton.addEventListener('click', sendMessage);
-  inputField.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') sendMessage();
-  });
-
-  genButton.addEventListener('click', () => {
-    if (isGenerating) return;
-    ctx.sendToBackend({ type: 'trigger_generation' });
-  });
-
-  inputRow.appendChild(inputField);
-  inputRow.appendChild(sendButton);
-  controls.appendChild(inputRow);
-
-  // Tools row
+  // Create all tools-row elements BEFORE attaching listeners
   const toolsRow = document.createElement('div');
   toolsRow.style.display = 'flex';
   toolsRow.style.justifyContent = 'space-between';
@@ -412,6 +373,46 @@ export function setup(ctx: SpindleFrontendContext) {
   genButton.style.transition = 'background 0.2s';
   genButton.addEventListener('mouseenter', () => genButton.style.background = 'var(--lumiverse-fill-hover)');
   genButton.addEventListener('mouseleave', () => genButton.style.background = 'var(--lumiverse-fill-subtle)');
+
+  // Attach listeners now that elements exist
+  autoToggle.addEventListener('change', (e) => {
+    if (autoToggle.checked) {
+      const scheduleNext = () => {
+        const nextMs = (intervalMin * 1000) + Math.random() * ((intervalMax - intervalMin) * 1000);
+        autoTimer = setTimeout(() => {
+          if (!isGenerating) {
+            ctx.sendToBackend({ type: 'trigger_generation' });
+          }
+          scheduleNext();
+        }, nextMs);
+      };
+      scheduleNext();
+    } else {
+      if (autoTimer) clearTimeout(autoTimer);
+    }
+  });
+
+  const sendMessage = () => {
+    if (isGenerating) return;
+    const text = inputField.value.trim();
+    if (!text) return;
+    inputField.value = '';
+    ctx.sendToBackend({ type: 'user_message', content: text });
+  };
+
+  sendButton.addEventListener('click', sendMessage);
+  inputField.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') sendMessage();
+  });
+
+  genButton.addEventListener('click', () => {
+    if (isGenerating) return;
+    ctx.sendToBackend({ type: 'trigger_generation' });
+  });
+
+  inputRow.appendChild(inputField);
+  inputRow.appendChild(sendButton);
+  controls.appendChild(inputRow);
 
   toolsRow.appendChild(autoToggleLabel);
   toolsRow.appendChild(genButton);
