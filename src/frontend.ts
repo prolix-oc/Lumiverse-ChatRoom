@@ -707,6 +707,11 @@ export function setup(ctx: SpindleFrontendContext) {
   }
 
   collapseBtn.addEventListener('click', () => {
+    // If we're fullscreen, exit fullscreen before collapsing so the host
+    // doesn't fight our height override.
+    if (isFullscreen) {
+      fsBtn.click();
+    }
     if (!isCollapsed) expandedHeight = shell.offsetHeight;
     isCollapsed = !isCollapsed;
     updateCollapse();
@@ -716,10 +721,8 @@ export function setup(ctx: SpindleFrontendContext) {
     if (isFullscreen) {
       // Exit fullscreen
       isFullscreen = false;
-      const props = ['position', 'left', 'top', 'right', 'bottom', 'margin', 'transform'];
-      props.forEach(p => hostWrapper.style.removeProperty(p));
+      widget.setFullscreen(false);
       if (preFullscreenState) {
-        widget.moveTo(preFullscreenState.x, preFullscreenState.y);
         shell.style.setProperty('width', preFullscreenState.w + 'px', 'important');
         shell.style.setProperty('height', preFullscreenState.h + 'px', 'important');
       }
@@ -732,25 +735,8 @@ export function setup(ctx: SpindleFrontendContext) {
       preFullscreenState = { w: shell.offsetWidth, h: shell.offsetHeight, x: widget.getPosition().x, y: widget.getPosition().y };
       isFullscreen = true;
       isCollapsed = false;
-
-      // Move the widget to the top-left origin so it covers the full screen
-      widget.moveTo(0, 0);
-
-      // Resize the shell to fill the viewport
-      shell.style.setProperty('width', window.innerWidth + 'px', 'important');
-      shell.style.setProperty('height', window.innerHeight + 'px', 'important');
+      widget.setFullscreen(true);
       shell.style.setProperty('border-radius', '0', 'important');
-
-      // Clear host positioning constraints
-      hostWrapper.style.setProperty('position', 'fixed', 'important');
-      hostWrapper.style.setProperty('left', '0', 'important');
-      hostWrapper.style.setProperty('top', '0', 'important');
-      hostWrapper.style.setProperty('right', 'auto', 'important');
-      hostWrapper.style.setProperty('bottom', 'auto', 'important');
-      hostWrapper.style.setProperty('width', '100vw', 'important');
-      hostWrapper.style.setProperty('height', '100vh', 'important');
-      hostWrapper.style.setProperty('margin', '0', 'important');
-      hostWrapper.style.setProperty('transform', 'none', 'important');
 
       fsBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3"/></svg>`;
       fsBtn.title = 'Exit Fullscreen';
@@ -767,10 +753,6 @@ export function setup(ctx: SpindleFrontendContext) {
       if (nx + rect.width > window.innerWidth) nx = Math.max(0, window.innerWidth - rect.width - 16);
       if (ny + rect.height > window.innerHeight) ny = Math.max(0, window.innerHeight - rect.height - 16);
       if (nx !== pos.x || ny !== pos.y) widget.moveTo(nx, ny);
-    } else if (isFullscreen) {
-      // Keep fullscreen shell synced to viewport
-      shell.style.setProperty('width', window.innerWidth + 'px', 'important');
-      shell.style.setProperty('height', window.innerHeight + 'px', 'important');
     }
   });
 
