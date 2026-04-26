@@ -376,57 +376,6 @@ function setup(ctx) {
     tooltip: "Council Chatroom",
     chromeless: true
   });
-  let widgetVisible = false;
-  function setWidgetVisible(visible) {
-    widgetVisible = visible;
-    widget.setVisible(visible);
-    if (visible) {
-      shell.style.removeProperty("opacity");
-      shell.style.removeProperty("visibility");
-      shell.style.removeProperty("pointer-events");
-    } else {
-      shell.style.opacity = "0";
-      shell.style.visibility = "hidden";
-      shell.style.pointerEvents = "none";
-    }
-  }
-  setWidgetVisible(false);
-  function persistWidgetState() {
-    if (isMobile)
-      return;
-    const pos = widget.getPosition();
-    ctx.sendToBackend({
-      type: "save_widget_state",
-      x: pos.x,
-      y: pos.y,
-      w: shell.offsetWidth,
-      h: shell.offsetHeight
-    });
-  }
-  function clampWidgetToViewport() {
-    if (isFullscreen)
-      return;
-    const pos = widget.getPosition();
-    const rect = shell.getBoundingClientRect();
-    let nx = pos.x;
-    let ny = pos.y;
-    const pad = 8;
-    if (nx < pad)
-      nx = pad;
-    if (nx + rect.width > window.innerWidth - pad)
-      nx = Math.max(pad, window.innerWidth - rect.width - pad);
-    if (ny < pad)
-      ny = pad;
-    if (ny + rect.height > window.innerHeight - pad)
-      ny = Math.max(pad, window.innerHeight - rect.height - pad);
-    if (nx !== pos.x || ny !== pos.y) {
-      widget.moveTo(nx, ny);
-    }
-  }
-  widget.onDragEnd(() => {
-    clampWidgetToViewport();
-    persistWidgetState();
-  });
   ctx.dom.addStyle(`
     @keyframes spin { to { transform: rotate(360deg); } }
     @keyframes msgIn { from { opacity:0; transform: translateY(6px) scale(.98); } to { opacity:1; transform: none; } }
@@ -512,6 +461,57 @@ function setup(ctx) {
     font-family:var(--lumiverse-font-family, system-ui, -apple-system, sans-serif);
     position:relative;
   `;
+  let widgetVisible = false;
+  function setWidgetVisible(visible) {
+    widgetVisible = visible;
+    widget.setVisible(visible);
+    if (visible) {
+      shell.style.removeProperty("opacity");
+      shell.style.removeProperty("visibility");
+      shell.style.removeProperty("pointer-events");
+    } else {
+      shell.style.opacity = "0";
+      shell.style.visibility = "hidden";
+      shell.style.pointerEvents = "none";
+    }
+  }
+  setWidgetVisible(false);
+  function persistWidgetState() {
+    if (isMobile)
+      return;
+    const pos = widget.getPosition();
+    ctx.sendToBackend({
+      type: "save_widget_state",
+      x: pos.x,
+      y: pos.y,
+      w: shell.offsetWidth,
+      h: shell.offsetHeight
+    });
+  }
+  function clampWidgetToViewport() {
+    if (isFullscreen)
+      return;
+    const pos = widget.getPosition();
+    const rect = shell.getBoundingClientRect();
+    let nx = pos.x;
+    let ny = pos.y;
+    const pad = 8;
+    if (nx < pad)
+      nx = pad;
+    if (nx + rect.width > window.innerWidth - pad)
+      nx = Math.max(pad, window.innerWidth - rect.width - pad);
+    if (ny < pad)
+      ny = pad;
+    if (ny + rect.height > window.innerHeight - pad)
+      ny = Math.max(pad, window.innerHeight - rect.height - pad);
+    if (nx !== pos.x || ny !== pos.y) {
+      widget.moveTo(nx, ny);
+    }
+  }
+  widget.onDragEnd(() => {
+    clampWidgetToViewport();
+    persistWidgetState();
+  });
   const header = document.createElement("div");
   header.style.cssText = `
     padding:14px 18px;
