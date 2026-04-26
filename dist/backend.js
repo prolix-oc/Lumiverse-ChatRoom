@@ -2,6 +2,24 @@
 // src/backend.ts
 var chatroomHistory = [];
 spindle.onFrontendMessage(async (payload) => {
+  if (payload.type === "save_settings") {
+    await spindle.variables.global.set("chatroom_interval_min", payload.intervalMin.toString());
+    await spindle.variables.global.set("chatroom_interval_max", payload.intervalMax.toString());
+    await spindle.variables.global.set("chatroom_context_limit", payload.contextLimit.toString());
+    return;
+  }
+  if (payload.type === "load_settings") {
+    const min = await spindle.variables.global.get("chatroom_interval_min");
+    const max = await spindle.variables.global.get("chatroom_interval_max");
+    const ctxLimit = await spindle.variables.global.get("chatroom_context_limit");
+    spindle.sendToFrontend({
+      type: "settings_loaded",
+      intervalMin: min ? parseInt(min, 10) : 5,
+      intervalMax: max ? parseInt(max, 10) : 15,
+      contextLimit: ctxLimit ? parseInt(ctxLimit, 10) : 10
+    });
+    return;
+  }
   if (payload.type === "user_message") {
     chatroomHistory.push({ role: "user", content: `[User Message in Chatroom]: ${payload.content}` });
     spindle.sendToFrontend({
@@ -24,8 +42,10 @@ spindle.onFrontendMessage(async (payload) => {
         spindle.sendToFrontend({ type: "error", message: "No active chat to monitor." });
         return;
       }
+      const ctxLimitStr = await spindle.variables.global.get("chatroom_context_limit");
+      const contextLimit = ctxLimitStr ? parseInt(ctxLimitStr, 10) : 10;
       const messages = await spindle.chat.getMessages(activeChat.id);
-      const recentMessages = messages.slice(-10);
+      const recentMessages = messages.slice(-contextLimit);
       const chatContext = recentMessages.map((m) => `${m.name || m.role}: ${m.content}`).join("\\n");
       const councilMembers = await spindle.council.getMembers();
       if (councilMembers.length === 0) {
