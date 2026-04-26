@@ -340,6 +340,32 @@ function setup(ctx) {
     });
   });
   saveBtnWrap.appendChild(saveBtn);
+  const clearBtn = document.createElement("button");
+  makeInteractive(clearBtn);
+  clearBtn.textContent = "Clear Chat History";
+  clearBtn.style.cssText = `
+    padding: 10px 18px;
+    background: transparent;
+    color: var(--lumiverse-danger, #ef4444);
+    border: 1px solid var(--lumiverse-danger, #ef4444);
+    border-radius: var(--lumiverse-radius, 8px);
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    transition: filter .15s, transform .1s, background .15s;
+  `;
+  clearBtn.addEventListener("mouseenter", () => {
+    clearBtn.style.background = "var(--lumiverse-danger-010, rgba(239,68,68,0.1))";
+  });
+  clearBtn.addEventListener("mouseleave", () => {
+    clearBtn.style.background = "transparent";
+  });
+  clearBtn.addEventListener("mousedown", () => clearBtn.style.transform = "scale(0.97)");
+  clearBtn.addEventListener("mouseup", () => clearBtn.style.transform = "none");
+  clearBtn.addEventListener("click", () => {
+    ctx.sendToBackend({ type: "clear_chat_history" });
+  });
+  saveBtnWrap.appendChild(clearBtn);
   configCard.appendChild(saveBtnWrap);
   settingsContainer.appendChild(configCard);
   tab.root.appendChild(settingsContainer);

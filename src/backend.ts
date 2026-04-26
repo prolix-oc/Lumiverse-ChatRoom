@@ -476,6 +476,24 @@ spindle.onFrontendMessage(async (payload, userId) => {
     await runCouncilGeneration(userId);
     return;
   }
+
+  if (payload.type === 'clear_chat_history') {
+    try {
+      const activeChat = await spindle.chats.getActive(userId);
+      if (!activeChat) {
+        spindle.sendToFrontend({ type: 'error', message: 'No active chat to clear history from.' }, userId);
+        return;
+      }
+
+      await spindle.variables.chat.delete(activeChat.id, CHATROOM_HISTORY_KEY);
+      spindle.sendToFrontend({ type: 'chat_changed', history: [] }, userId);
+      spindle.toast.success('Chatroom history cleared.', { userId });
+    } catch (e: any) {
+      spindle.log.error(`Failed to clear chatroom history: ${e.message || String(e)}`);
+      spindle.sendToFrontend({ type: 'error', message: 'Failed to clear chatroom history.' }, userId);
+    }
+    return;
+  }
 });
 
 // Listen for story chat messages to support message-based triggering
