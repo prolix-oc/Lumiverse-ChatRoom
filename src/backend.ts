@@ -160,7 +160,8 @@ MemberName (Username): The message content
         provider: conn.provider,
         model: conn.model,
         connection_id: conn.id,
-        messages: promptMessages
+        messages: promptMessages,
+        userId
       });
 
       let fullText = '';
