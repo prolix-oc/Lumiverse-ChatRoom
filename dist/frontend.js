@@ -212,6 +212,14 @@ function setup(ctx) {
     return `hsl(${hue}, 70%, 60%)`;
   }
   const shell = widget.root.parentElement || widget.root;
+  function getHostWrapper() {
+    let el = shell;
+    while (el.parentElement && el.parentElement !== document.body) {
+      el = el.parentElement;
+    }
+    return el;
+  }
+  const hostWrapper = getHostWrapper();
   widget.root.style.cssText = `
     width:100%;height:100%;
     display:flex;flex-direction:column;
@@ -493,8 +501,8 @@ function setup(ctx) {
   fsBtn.addEventListener("click", () => {
     if (isFullscreen) {
       isFullscreen = false;
-      const props = ["position", "left", "top", "right", "bottom", "margin", "transform", "width", "height", "max-width", "max-height", "border-radius"];
-      props.forEach((p) => widget.root.style.removeProperty(p));
+      const props = ["position", "left", "top", "right", "bottom", "margin", "transform", "width", "height", "max-width", "max-height", "min-width", "min-height"];
+      props.forEach((p) => hostWrapper.style.removeProperty(p));
       if (preFullscreenState) {
         widget.moveTo(preFullscreenState.x, preFullscreenState.y);
       }
@@ -502,18 +510,19 @@ function setup(ctx) {
       fsBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>`;
       fsBtn.title = "Fullscreen";
     } else {
-      preFullscreenState = { w: widget.root.offsetWidth, h: widget.root.offsetHeight, x: widget.getPosition().x, y: widget.getPosition().y };
+      preFullscreenState = { w: hostWrapper.offsetWidth, h: hostWrapper.offsetHeight, x: widget.getPosition().x, y: widget.getPosition().y };
       isFullscreen = true;
       isCollapsed = false;
       const pad = isMobile ? 4 : 24;
-      widget.root.style.setProperty("position", "fixed", "important");
-      widget.root.style.setProperty("left", pad + "px", "important");
-      widget.root.style.setProperty("top", pad + "px", "important");
-      widget.root.style.setProperty("right", pad + "px", "important");
-      widget.root.style.setProperty("bottom", pad + "px", "important");
-      widget.root.style.setProperty("width", "auto", "important");
-      widget.root.style.setProperty("height", "auto", "important");
-      widget.root.style.setProperty("border-radius", "20px", "important");
+      hostWrapper.style.setProperty("position", "fixed", "important");
+      hostWrapper.style.setProperty("left", pad + "px", "important");
+      hostWrapper.style.setProperty("top", pad + "px", "important");
+      hostWrapper.style.setProperty("right", pad + "px", "important");
+      hostWrapper.style.setProperty("bottom", pad + "px", "important");
+      hostWrapper.style.setProperty("width", "auto", "important");
+      hostWrapper.style.setProperty("height", "auto", "important");
+      hostWrapper.style.setProperty("margin", "0", "important");
+      hostWrapper.style.setProperty("transform", "none", "important");
       fsBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3"/></svg>`;
       fsBtn.title = "Exit Fullscreen";
     }
