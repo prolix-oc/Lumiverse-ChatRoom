@@ -1,0 +1,9 @@
+{
+  "name": "lumiverse-chatroom",
+  "version": "1.0.0",
+  "description": "Live Internet Shitposting Chatroom",
+  "main": "index.js",
+  "dependencies": {
+    "lumiverse-spindle-types": "latest"
+  }
+}

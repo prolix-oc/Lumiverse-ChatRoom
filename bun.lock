@@ -1,0 +1,15 @@
+{
+  "lockfileVersion": 1,
+  "configVersion": 1,
+  "workspaces": {
+    "": {
+      "name": "lumiverse-chatroom",
+      "dependencies": {
+        "lumiverse-spindle-types": "latest",
+      },
+    },
+  },
+  "packages": {
+    "lumiverse-spindle-types": ["lumiverse-spindle-types@0.4.40", "", {}, "sha512-MDM84bbnbFodvCj2F2c7f7C29hHo8CTdCHTLnJQrlJzt7li3ec4K/utLMkhTAtJsz3LdI168Wy5aoDNVqpV3jw=="],
+  }
+}
