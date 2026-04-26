@@ -243,6 +243,9 @@ function setup(ctx) {
   inputField.style.color = "var(--lumiverse-text)";
   inputField.style.fontSize = "13px";
   inputField.style.outline = "none";
+  inputField.addEventListener("mousedown", (e) => {
+    e.stopPropagation();
+  });
   const sendButton = document.createElement("button");
   sendButton.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>`;
   sendButton.style.display = "flex";

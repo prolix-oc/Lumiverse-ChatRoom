@@ -287,6 +287,13 @@ export function setup(ctx: SpindleFrontendContext) {
   inputField.style.fontSize = '13px';
   inputField.style.outline = 'none';
 
+  // FIX: Make sure the input actually catches events properly and stops propagation
+  // if it's trapped in a draggable container. The float widget shouldn't trap clicks natively
+  // but if it's not gaining focus, explicitly calling focus() on click may help, or stopping propagation on mousedown.
+  inputField.addEventListener('mousedown', (e) => {
+    e.stopPropagation();
+  });
+
   const sendButton = document.createElement('button');
   sendButton.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>`;
   sendButton.style.display = 'flex';
@@ -338,6 +345,11 @@ export function setup(ctx: SpindleFrontendContext) {
   autoToggleLabel.style.alignItems = 'center';
   autoToggleLabel.style.cursor = 'pointer';
   autoToggleLabel.style.userSelect = 'none';
+  // FIX: Also stop propagation on the toggle label to ensure clicking it registers 
+  // without dragging the widget
+  autoToggleLabel.addEventListener('mousedown', (e) => {
+    e.stopPropagation();
+  });
   const autoToggle = document.createElement('input');
   autoToggle.type = 'checkbox';
   autoToggleLabel.appendChild(autoToggle);
