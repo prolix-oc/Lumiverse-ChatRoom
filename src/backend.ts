@@ -12,7 +12,7 @@ spindle.onFrontendMessage(async (payload, userId) => {
     await spindle.variables.global.set('chatroom_context_limit', payload.contextLimit.toString(), userId);
     await spindle.variables.global.set('chatroom_connection_id', payload.connectionId || '', userId);
     
-    spindle.toast.success('Chatroom configuration saved.', userId);
+    spindle.toast.success('Chatroom configuration saved.', { userId });
     return;
   }
 

@@ -34,16 +34,12 @@ export function setup(ctx: SpindleFrontendContext) {
 
   function makeInteractive(el: HTMLElement) {
     const stop = (e: Event) => e.stopPropagation();
-    // Stop in both capture and bubble phases just in case the host uses capture
-    el.addEventListener('mousedown', stop, true);
+    // Only block bubble phase — capture-phase stopPropagation on the target
+    // would prevent our own bubble-phase listeners from firing.
     el.addEventListener('mousedown', stop, false);
-    el.addEventListener('touchstart', stop, { passive: true, capture: true });
     el.addEventListener('touchstart', stop, { passive: true, capture: false });
-    el.addEventListener('pointerdown', stop, true);
     el.addEventListener('pointerdown', stop, false);
-    el.addEventListener('click', stop, true);
     el.addEventListener('click', stop, false);
-    el.addEventListener('keydown', stop, true);
     el.addEventListener('keydown', stop, false);
   }
 

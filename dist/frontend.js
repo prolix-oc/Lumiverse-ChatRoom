@@ -28,15 +28,10 @@ function setup(ctx) {
   settingsContainer.appendChild(descEl);
   function makeInteractive(el) {
     const stop = (e) => e.stopPropagation();
-    el.addEventListener("mousedown", stop, true);
     el.addEventListener("mousedown", stop, false);
-    el.addEventListener("touchstart", stop, { passive: true, capture: true });
     el.addEventListener("touchstart", stop, { passive: true, capture: false });
-    el.addEventListener("pointerdown", stop, true);
     el.addEventListener("pointerdown", stop, false);
-    el.addEventListener("click", stop, true);
     el.addEventListener("click", stop, false);
-    el.addEventListener("keydown", stop, true);
     el.addEventListener("keydown", stop, false);
   }
   const toggleBtn = document.createElement("button");
