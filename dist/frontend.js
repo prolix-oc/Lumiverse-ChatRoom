@@ -604,10 +604,19 @@ function setup(ctx) {
     isCollapsed = !isCollapsed;
     updateCollapse();
   });
+  const supportsNativeFullscreen = typeof widget.setFullscreen === "function";
   fsBtn.addEventListener("click", () => {
     if (isFullscreen) {
       isFullscreen = false;
-      widget.setFullscreen(false);
+      if (supportsNativeFullscreen) {
+        widget.setFullscreen(false);
+      } else {
+        const props = ["position", "left", "top", "right", "bottom", "margin", "transform"];
+        props.forEach((p) => hostWrapper.style.removeProperty(p));
+        if (preFullscreenState) {
+          widget.moveTo(preFullscreenState.x, preFullscreenState.y);
+        }
+      }
       if (preFullscreenState) {
         shell.style.setProperty("width", preFullscreenState.w + "px", "important");
         shell.style.setProperty("height", preFullscreenState.h + "px", "important");
@@ -620,7 +629,20 @@ function setup(ctx) {
       preFullscreenState = { w: shell.offsetWidth, h: shell.offsetHeight, x: widget.getPosition().x, y: widget.getPosition().y };
       isFullscreen = true;
       isCollapsed = false;
-      widget.setFullscreen(true);
+      if (supportsNativeFullscreen) {
+        widget.setFullscreen(true);
+      } else {
+        widget.moveTo(0, 0);
+        hostWrapper.style.setProperty("position", "fixed", "important");
+        hostWrapper.style.setProperty("left", "0", "important");
+        hostWrapper.style.setProperty("top", "0", "important");
+        hostWrapper.style.setProperty("right", "auto", "important");
+        hostWrapper.style.setProperty("bottom", "auto", "important");
+        hostWrapper.style.setProperty("width", "100vw", "important");
+        hostWrapper.style.setProperty("height", "100vh", "important");
+        hostWrapper.style.setProperty("margin", "0", "important");
+        hostWrapper.style.setProperty("transform", "none", "important");
+      }
       shell.style.setProperty("border-radius", "0", "important");
       fsBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3"/></svg>`;
       fsBtn.title = "Exit Fullscreen";
@@ -638,6 +660,9 @@ function setup(ctx) {
         ny = Math.max(0, window.innerHeight - rect.height - 16);
       if (nx !== pos.x || ny !== pos.y)
         widget.moveTo(nx, ny);
+    } else if (isFullscreen && !supportsNativeFullscreen) {
+      shell.style.setProperty("width", window.innerWidth + "px", "important");
+      shell.style.setProperty("height", window.innerHeight + "px", "important");
     }
   });
   autoToggle.addEventListener("change", () => {
