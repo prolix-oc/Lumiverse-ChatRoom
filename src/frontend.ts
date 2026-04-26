@@ -559,8 +559,7 @@ export function setup(ctx: SpindleFrontendContext) {
     if (isFullscreen) {
       isFullscreen = false;
       if (preFullscreenState) {
-        shell.style.removeProperty('width');
-        shell.style.removeProperty('height');
+        ['width', 'height', 'position', 'left', 'top', 'right', 'bottom', 'margin', 'transform'].forEach(p => shell.style.removeProperty(p));
         widget.moveTo(preFullscreenState.x, preFullscreenState.y);
       }
       fsBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>`;
@@ -570,10 +569,18 @@ export function setup(ctx: SpindleFrontendContext) {
       isFullscreen = true;
       isCollapsed = false;
       updateCollapse();
-      const pad = isMobile ? 4 : 20;
+      const pad = isMobile ? 4 : 24;
+      // Use fixed positioning directly on the shell so it fills the viewport
+      // independent of the host's wrapper positioning logic.
+      shell.style.setProperty('position', 'fixed', 'important');
+      shell.style.setProperty('left', pad + 'px', 'important');
+      shell.style.setProperty('top', pad + 'px', 'important');
+      shell.style.setProperty('right', 'auto', 'important');
+      shell.style.setProperty('bottom', 'auto', 'important');
+      shell.style.setProperty('margin', '0', 'important');
+      shell.style.setProperty('transform', 'none', 'important');
       shell.style.setProperty('width', (window.innerWidth - pad * 2) + 'px', 'important');
       shell.style.setProperty('height', (window.innerHeight - pad * 2) + 'px', 'important');
-      widget.moveTo(pad, pad);
       fsBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3"/></svg>`;
       fsBtn.title = 'Exit Fullscreen';
     }
