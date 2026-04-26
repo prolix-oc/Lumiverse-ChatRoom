@@ -763,9 +763,9 @@ export function setup(ctx: SpindleFrontendContext) {
         hostWrapper.style.setProperty('margin', '0', 'important');
         hostWrapper.style.setProperty('transform', 'none', 'important');
       }
-      // Clear any stale width/height from a previous exit so the shell fills the container
-      shell.style.removeProperty('width');
-      shell.style.removeProperty('height');
+      // Make the shell fill the host container in fullscreen mode
+      shell.style.setProperty('width', '100%', 'important');
+      shell.style.setProperty('height', '100%', 'important');
       shell.style.setProperty('border-radius', '0', 'important');
       updateCollapse();
 
