@@ -1,23 +1,23 @@
 // @bun
 // src/backend.ts
 var chatroomHistory = [];
-spindle.onFrontendMessage(async (payload) => {
+spindle.onFrontendMessage(async (payload, userId) => {
   if (payload.type === "save_settings") {
-    await spindle.variables.global.set("chatroom_interval_min", payload.intervalMin.toString());
-    await spindle.variables.global.set("chatroom_interval_max", payload.intervalMax.toString());
-    await spindle.variables.global.set("chatroom_context_limit", payload.contextLimit.toString());
+    await spindle.variables.global.set("chatroom_interval_min", payload.intervalMin.toString(), userId);
+    await spindle.variables.global.set("chatroom_interval_max", payload.intervalMax.toString(), userId);
+    await spindle.variables.global.set("chatroom_context_limit", payload.contextLimit.toString(), userId);
     return;
   }
   if (payload.type === "load_settings") {
-    const min = await spindle.variables.global.get("chatroom_interval_min");
-    const max = await spindle.variables.global.get("chatroom_interval_max");
-    const ctxLimit = await spindle.variables.global.get("chatroom_context_limit");
+    const min = await spindle.variables.global.get("chatroom_interval_min", userId);
+    const max = await spindle.variables.global.get("chatroom_interval_max", userId);
+    const ctxLimit = await spindle.variables.global.get("chatroom_context_limit", userId);
     spindle.sendToFrontend({
       type: "settings_loaded",
       intervalMin: min ? parseInt(min, 10) : 5,
       intervalMax: max ? parseInt(max, 10) : 15,
       contextLimit: ctxLimit ? parseInt(ctxLimit, 10) : 10
-    });
+    }, userId);
     return;
   }
   if (payload.type === "user_message") {
@@ -29,30 +29,30 @@ spindle.onFrontendMessage(async (payload) => {
       content: payload.content,
       avatarUrl: null,
       isUser: true
-    });
+    }, userId);
   }
   if (payload.type === "trigger_generation") {
     if (!spindle.permissions.has("generation")) {
-      spindle.sendToFrontend({ type: "error", message: "Generation permission not granted" });
+      spindle.sendToFrontend({ type: "error", message: "Generation permission not granted" }, userId);
       return;
     }
     try {
-      const activeChat = await spindle.chats.getActive();
+      const activeChat = await spindle.chats.getActive(userId);
       if (!activeChat) {
-        spindle.sendToFrontend({ type: "error", message: "No active chat to monitor." });
+        spindle.sendToFrontend({ type: "error", message: "No active chat to monitor." }, userId);
         return;
       }
-      const ctxLimitStr = await spindle.variables.global.get("chatroom_context_limit");
+      const ctxLimitStr = await spindle.variables.global.get("chatroom_context_limit", userId);
       const contextLimit = ctxLimitStr ? parseInt(ctxLimitStr, 10) : 10;
-      const messages = await spindle.chat.getMessages(activeChat.id);
+      const messages = await spindle.chat.getMessages(activeChat.id, userId);
       const recentMessages = messages.slice(-contextLimit);
       const chatContext = recentMessages.map((m) => `${m.name || m.role}: ${m.content}`).join("\\n");
-      const councilMembers = await spindle.council.getMembers();
+      const councilMembers = await spindle.council.getMembers(userId);
       if (councilMembers.length === 0) {
-        spindle.sendToFrontend({ type: "error", message: "No council members assigned." });
+        spindle.sendToFrontend({ type: "error", message: "No council members assigned." }, userId);
         return;
       }
-      const activePersona = await spindle.personas.getActive();
+      const activePersona = await spindle.personas.getActive(userId);
       const personaName = activePersona ? activePersona.name : "The User";
       const councilContext = councilMembers.map((m) => `- ${m.name}: ${m.role}. Personality: ${m.personality}`).join("\\n");
       const systemPrompt = `You are running a live internet shitposting chatroom for the "council members" who are watching a story unfold.
@@ -102,10 +102,10 @@ MemberName (Username): The message content
           content,
           avatarUrl,
           isUser: false
-        });
+        }, userId);
       }
     } catch (e) {
-      spindle.sendToFrontend({ type: "error", message: e.message || String(e) });
+      spindle.sendToFrontend({ type: "error", message: e.message || String(e) }, userId);
     }
   }
 });
