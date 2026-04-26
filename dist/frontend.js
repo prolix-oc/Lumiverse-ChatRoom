@@ -299,6 +299,7 @@ function setup(ctx) {
   toolsRow.style.alignItems = "center";
   toolsRow.style.marginTop = "4px";
   const autoToggleLabel = document.createElement("label");
+  makeInteractive(autoToggleLabel);
   autoToggleLabel.style.display = "flex";
   autoToggleLabel.style.gap = "6px";
   autoToggleLabel.style.fontSize = "12px";
@@ -306,9 +307,6 @@ function setup(ctx) {
   autoToggleLabel.style.alignItems = "center";
   autoToggleLabel.style.cursor = "pointer";
   autoToggleLabel.style.userSelect = "none";
-  autoToggleLabel.addEventListener("mousedown", (e) => {
-    e.stopPropagation();
-  });
   const autoToggle = document.createElement("input");
   autoToggle.type = "checkbox";
   autoToggleLabel.appendChild(autoToggle);

@@ -351,6 +351,7 @@ export function setup(ctx: SpindleFrontendContext) {
   toolsRow.style.marginTop = '4px';
 
   const autoToggleLabel = document.createElement('label');
+  makeInteractive(autoToggleLabel);
   autoToggleLabel.style.display = 'flex';
   autoToggleLabel.style.gap = '6px';
   autoToggleLabel.style.fontSize = '12px';
@@ -358,11 +359,6 @@ export function setup(ctx: SpindleFrontendContext) {
   autoToggleLabel.style.alignItems = 'center';
   autoToggleLabel.style.cursor = 'pointer';
   autoToggleLabel.style.userSelect = 'none';
-  // FIX: Also stop propagation on the toggle label to ensure clicking it registers 
-  // without dragging the widget
-  autoToggleLabel.addEventListener('mousedown', (e) => {
-    e.stopPropagation();
-  });
   const autoToggle = document.createElement('input');
   autoToggle.type = 'checkbox';
   autoToggleLabel.appendChild(autoToggle);
