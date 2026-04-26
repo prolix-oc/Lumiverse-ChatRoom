@@ -4,8 +4,9 @@
   "identifier": "lumiverse_chatroom",
   "author": "Prolix OCs",
   "github": "https://github.com/prolix-oc/Lumiverse-ChatRoom",
+  "homepage": "https://github.com/prolix-oc/Lumiverse-ChatRoom",
   "description": "A floating fan chatroom where your council members passively comment on the story.",
-  "permissions": ["generation", "ui_panels", "chats", "chat_mutation", "personas", "council"],
+  "permissions": ["generation", "ui_panels", "chats", "chat_mutation", "personas"],
   "entry_backend": "dist/backend.js",
   "entry_frontend": "dist/frontend.js",
   "minimum_lumiverse_version": "0.1.0"
