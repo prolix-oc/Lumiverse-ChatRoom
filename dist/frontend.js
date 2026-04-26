@@ -474,6 +474,7 @@ function setup(ctx) {
       appendMessage("System", "System", `Error: ${payload.message}`, null);
     }
   });
+  ctx.sendToBackend({ type: "load_settings" });
   return () => {
     if (autoTimer)
       clearTimeout(autoTimer);

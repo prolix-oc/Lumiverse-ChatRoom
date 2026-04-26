@@ -554,6 +554,8 @@ export function setup(ctx: SpindleFrontendContext) {
     }
   });
 
+  ctx.sendToBackend({ type: 'load_settings' });
+
   return () => {
     if (autoTimer) clearTimeout(autoTimer);
     widget.destroy();
