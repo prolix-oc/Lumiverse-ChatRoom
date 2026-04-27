@@ -522,13 +522,27 @@ export function setup(ctx: SpindleFrontendContext) {
   // ── 2. Float Widget UI ──
   const isMobile = window.innerWidth <= 768 || 'ontouchstart' in window;
 
-  const widget = ctx.ui.createFloatWidget({
-    width: isMobile ? Math.min(380, window.innerWidth - 16) : 440,
-    height: isMobile ? Math.min(540, window.innerHeight - 80) : 620,
-    initialPosition: {
+  function getDefaultWidgetSize() {
+    return {
+      width: isMobile ? Math.min(380, window.innerWidth - 16) : 440,
+      height: isMobile ? Math.min(540, window.innerHeight - 80) : 620,
+    };
+  }
+
+  function getDefaultWidgetPosition() {
+    return {
       x: isMobile ? 8 : window.innerWidth - 480,
-      y: isMobile ? 40 : window.innerHeight - 660
-    },
+      y: isMobile ? 40 : window.innerHeight - 660,
+    };
+  }
+
+  const defaultWidgetSize = getDefaultWidgetSize();
+  const defaultWidgetPosition = getDefaultWidgetPosition();
+
+  const widget = ctx.ui.createFloatWidget({
+    width: defaultWidgetSize.width,
+    height: defaultWidgetSize.height,
+    initialPosition: defaultWidgetPosition,
     snapToEdge: true,
     tooltip: 'Council Chatroom',
     chromeless: true
@@ -615,6 +629,18 @@ export function setup(ctx: SpindleFrontendContext) {
     sizedWidget.setSize?.(width, height);
   }
 
+  function restoreSaneWidgetDefaults() {
+    const defaults = getDefaultWidgetSize();
+    const pos = getDefaultWidgetPosition();
+    expandedHeight = defaults.height;
+    setWidgetSize(defaults.width, isCollapsed ? header.offsetHeight : defaults.height);
+    widget.moveTo(pos.x, pos.y);
+    requestAnimationFrame(() => {
+      clampWidgetToViewport();
+      persistWidgetState();
+    });
+  }
+
   // Apply our chrome to the host wrapper, and make widget.root fill it.
   widget.root.style.cssText = `
     width:100%;height:100%;
@@ -649,10 +675,7 @@ export function setup(ctx: SpindleFrontendContext) {
       const w = shell.offsetWidth;
       const h = shell.offsetHeight;
       if (w < 50 || h < 50) {
-        const defaultW = isMobile ? Math.min(380, window.innerWidth - 16) : 440;
-        const defaultH = isMobile ? Math.min(540, window.innerHeight - 80) : 620;
-        setWidgetSize(defaultW, isCollapsed ? header.offsetHeight : defaultH);
-        if (!isCollapsed) expandedHeight = defaultH;
+        restoreSaneWidgetDefaults();
         syncHostWrapperSize();
       }
     } else {
@@ -673,10 +696,7 @@ export function setup(ctx: SpindleFrontendContext) {
         syncHostWrapperSize();
       }
       if (w < 50 || h < 50) {
-        const defaultW = isMobile ? Math.min(380, window.innerWidth - 16) : 440;
-        const defaultH = isMobile ? Math.min(540, window.innerHeight - 80) : 620;
-        setWidgetSize(defaultW, isCollapsed ? header.offsetHeight : defaultH);
-        if (!isCollapsed) expandedHeight = defaultH;
+        restoreSaneWidgetDefaults();
         syncHostWrapperSize();
       }
     }
@@ -794,6 +814,36 @@ export function setup(ctx: SpindleFrontendContext) {
     `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`,
     'Hide'
   );
+
+  let collapsedContextMenuOpen = false;
+  async function openCollapsedContextMenu(position: { x: number; y: number }) {
+    if (collapsedContextMenuOpen) return;
+    collapsedContextMenuOpen = true;
+    try {
+      const result = await ctx.ui.showContextMenu({
+        position,
+        items: [
+          { key: 'reset', label: 'Reset Position' },
+          { key: 'hide', label: 'Hide Widget' },
+        ],
+      });
+
+      if (result.selectedKey === 'reset') {
+        restoreSaneWidgetDefaults();
+      } else if (result.selectedKey === 'hide') {
+        setWidgetVisible(false);
+      }
+    } finally {
+      collapsedContextMenuOpen = false;
+    }
+  }
+
+  shell.addEventListener('contextmenu', (e) => {
+    if (!isCollapsed) return;
+    e.preventDefault();
+    e.stopPropagation();
+    void openCollapsedContextMenu({ x: e.clientX, y: e.clientY });
+  });
 
   headerActions.appendChild(fsBtn);
   headerActions.appendChild(collapseBtn);
