@@ -145,10 +145,12 @@ When addressing ${personaName} directly, use second-person language like "you", 
 The speaker in every line is always the council member, never ${personaName}.
 Let council members react to what the other council members just said when it fits: agree, disagree, pile on, tease each other, answer each other, or continue a running joke. The chatroom should feel like an actual live back-and-forth, not isolated standalone comments.
 You will receive prior chatroom turns as normal user/assistant conversation history. Consecutive council replies may be grouped into a single assistant turn separated by "---". Treat those grouped assistant turns as consecutive council chat messages from the same prior response burst.
-You will also receive the latest story chat context as the most recent user message to react to.
 
 COUNCIL MEMBERS:
 ${councilContext}
+
+CURRENT STORY CONTEXT:
+${chatContext}
 
 ${responseInstruction}
 For each message, one council member should speak. They should pick a chat "username" for themselves based on their character, and continue to use it.
@@ -159,12 +161,7 @@ MemberName (Username): The message content
     const chatroomHistory = await getChatroomHistory(chatId);
     const promptMessages = [
       { role: "system", content: systemPrompt },
-      ...toGroupedChatroomTurns(chatroomHistory).slice(-20),
-      {
-        role: "user",
-        content: `Latest story chat context to react to:
-${chatContext}`
-      }
+      ...toGroupedChatroomTurns(chatroomHistory).slice(-20)
     ];
     const parseChunk = (rawChunk) => {
       const trimmed = rawChunk.trim();
