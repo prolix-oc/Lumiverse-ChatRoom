@@ -555,6 +555,11 @@ export function setup(ctx: SpindleFrontendContext) {
     .chatroom-scroll::-webkit-scrollbar-track { background: transparent; }
     .chatroom-scroll::-webkit-scrollbar-thumb { background: var(--lumiverse-border); border-radius: 3px; }
     .chatroom-msg { animation: msgIn .2s ease-out; }
+    .chatroom-copy-btn { opacity: .45; transition: opacity .15s, background .15s, transform .1s; }
+    .chatroom-copy-btn:hover, .chatroom-copy-btn:focus-visible { opacity: 1; }
+    .chatroom-copy-btn:active { transform: scale(.96); }
+    .chatroom-rich strong { font-weight: 700; }
+    .chatroom-rich em { font-style: italic; }
   `);
 
   let autoTimer: any = null;
@@ -606,6 +611,44 @@ export function setup(ctx: SpindleFrontendContext) {
   function memberColor(name: string) {
     const hue = hashHue(name);
     return `hsl(${hue}, 70%, 60%)`;
+  }
+
+  function escapeHtml(text: string) {
+    return text
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  function formatMessageContent(text: string) {
+    let html = escapeHtml(text);
+    html = html.replace(/\*\*\*([\s\S]+?)\*\*\*/g, '<strong><em>$1</em></strong>');
+    html = html.replace(/\*\*([\s\S]+?)\*\*/g, '<strong>$1</strong>');
+    html = html.replace(/\*([\s\S]+?)\*/g, '<em>$1</em>');
+    return html.replace(/\n/g, '<br>');
+  }
+
+  async function copyToClipboard(text: string) {
+    if (navigator.clipboard?.writeText && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+      return;
+    }
+
+    const fallback = document.createElement('textarea');
+    fallback.value = text;
+    fallback.setAttribute('readonly', 'true');
+    fallback.style.cssText = 'position:fixed;left:-9999px;top:0;opacity:0;pointer-events:none;';
+    document.body.appendChild(fallback);
+    fallback.select();
+    fallback.setSelectionRange(0, fallback.value.length);
+
+    const copied = document.execCommand('copy');
+    document.body.removeChild(fallback);
+    if (!copied) {
+      throw new Error('Copy failed');
+    }
   }
 
   // The host's widget container is the outer positioned wrapper around widget.root.
@@ -941,8 +984,9 @@ export function setup(ctx: SpindleFrontendContext) {
       <line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/>
       <line x1="4.93" y1="19.07" x2="7.76" y2="16.24"/><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"/>
     </svg>
-    <span>Council is typing…</span>
+    <span class="chatroom-typing-label">Council is typing…</span>
   `;
+  const loadingIndicatorLabel = loadingIndicator.querySelector('.chatroom-typing-label') as HTMLSpanElement;
   messageList.appendChild(loadingIndicator);
 
   // ── Virtual List Structure ──
@@ -981,6 +1025,12 @@ export function setup(ctx: SpindleFrontendContext) {
     const currId = curr.isUser ? '__user__' : curr.name;
     const prevId = prev.isUser ? '__user__' : prev.name;
     return currId === prevId;
+  }
+
+  function setTypingIndicator(speakerName?: string | null) {
+    loadingIndicatorLabel.textContent = speakerName?.trim()
+      ? `${speakerName.trim()} is typing…`
+      : 'Council is typing…';
   }
 
   function createMessageElement(index: number): HTMLElement {
@@ -1025,6 +1075,7 @@ export function setup(ctx: SpindleFrontendContext) {
 
     // Bubble
     const bubble = document.createElement('div');
+    bubble.className = 'chatroom-rich';
     bubble.style.cssText = `
       padding:10px 14px;border-radius:18px;font-size:13.5px;
       line-height:1.45;word-break:break-word;
@@ -1032,15 +1083,50 @@ export function setup(ctx: SpindleFrontendContext) {
         ? 'background:var(--lumiverse-primary);color:white;border-bottom-right-radius:4px;'
         : 'background:var(--lumiverse-fill-subtle);color:var(--lumiverse-text);border-bottom-left-radius:4px;'}
     `;
-    bubble.textContent = msg.content;
+    bubble.innerHTML = formatMessageContent(msg.content);
     col.appendChild(bubble);
+
+    // Actions
+    const metaRow = document.createElement('div');
+    metaRow.style.cssText = `display:flex;align-items:center;gap:4px;padding:0 6px;${isUser ? 'flex-direction:row-reverse;' : ''}`;
+
+    const copyBtn = document.createElement('button');
+    makeInteractive(copyBtn);
+    copyBtn.className = 'chatroom-copy-btn';
+    copyBtn.type = 'button';
+    copyBtn.title = 'Copy message';
+    copyBtn.setAttribute('aria-label', 'Copy message');
+    copyBtn.style.cssText = `
+      width:20px;height:20px;border:none;border-radius:999px;cursor:pointer;
+      display:flex;align-items:center;justify-content:center;padding:0;
+      background:transparent;color:${isUser ? 'rgba(255,255,255,0.9)' : 'var(--lumiverse-text-dim)'};
+    `;
+    copyBtn.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>`;
+    copyBtn.addEventListener('click', async () => {
+      const prevLabel = copyBtn.getAttribute('aria-label') || 'Copy message';
+      try {
+        await copyToClipboard(msg.content);
+        copyBtn.setAttribute('aria-label', 'Copied');
+        copyBtn.title = 'Copied';
+      } catch {
+        copyBtn.setAttribute('aria-label', 'Copy failed');
+        copyBtn.title = 'Copy failed';
+      }
+
+      window.setTimeout(() => {
+        copyBtn.setAttribute('aria-label', prevLabel);
+        copyBtn.title = 'Copy message';
+      }, 1200);
+    });
+    metaRow.appendChild(copyBtn);
 
     // Timestamp
     const timeEl = document.createElement('div');
-    timeEl.style.cssText = 'font-size:10px;color:var(--lumiverse-text-dim);padding:0 6px;';
+    timeEl.style.cssText = 'font-size:10px;color:var(--lumiverse-text-dim);';
     const ts = new Date(msg.timestamp);
     timeEl.textContent = ts.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    col.appendChild(timeEl);
+    metaRow.appendChild(timeEl);
+    col.appendChild(metaRow);
 
     wrap.appendChild(col);
     return wrap;
@@ -1584,13 +1670,17 @@ export function setup(ctx: SpindleFrontendContext) {
       isGenerating = true;
       genButton.disabled = true;
       genButton.style.opacity = '0.5';
+      setTypingIndicator();
       loadingIndicator.style.display = 'flex';
       messageList.appendChild(loadingIndicator);
       messageList.scrollTo({ top: messageList.scrollHeight, behavior: 'smooth' });
+    } else if (payload.type === 'typing_status') {
+      setTypingIndicator(payload.speakerName);
     } else if (payload.type === 'generation_ended') {
       isGenerating = false;
       genButton.disabled = false;
       genButton.style.opacity = '1';
+      setTypingIndicator();
       loadingIndicator.style.display = 'none';
     } else if (payload.type === 'new_message') {
       appendMessage(payload.name, payload.username || payload.name, payload.content, payload.avatarUrl, payload.isUser);

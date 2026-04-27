@@ -93,7 +93,10 @@ async function runCouncilGeneration(userId) {
     const contextLimit = persistedSettings.contextLimit ?? 10;
     const messages = await spindle.chat.getMessages(chatId);
     const recentMessages = messages.slice(-contextLimit);
-    const chatContext = recentMessages.map((m) => `${m.name || m.role}: ${stripHtmlTags(m.content)}`).join("\\n");
+    const chatContext = recentMessages.map((m) => {
+      const speakerName = typeof m.metadata?.name === "string" ? m.metadata.name : m.role;
+      return `${speakerName}: ${stripHtmlTags(m.content)}`;
+    }).join("\\n");
     spindle.log.info("Fetching council members...");
     const councilMembers = await spindle.council.getMembers({ userId });
     if (councilMembers.length === 0) {
@@ -130,6 +133,29 @@ MemberName (Username): The message content
       { role: "system", content: systemPrompt },
       ...toLlmHistory(chatroomHistory).slice(-20)
     ];
+    const parseChunk = (rawChunk) => {
+      const trimmed = rawChunk.trim();
+      if (!trimmed)
+        return null;
+      const match = trimmed.match(/^([^:(\n]+?)(?:\s*\(([^)\n]+)\))?:\s*([\s\S]*)$/);
+      if (!match) {
+        return {
+          speakerName: "Unknown",
+          username: "Unknown",
+          content: trimmed
+        };
+      }
+      const speakerName = match[1].trim();
+      return {
+        speakerName,
+        username: match[2] ? match[2].trim() : speakerName,
+        content: match[3].trim()
+      };
+    };
+    const detectTypingSpeaker = (rawChunk) => {
+      const match = rawChunk.match(/^\s*([^:(\n]+?)(?:\s*\(([^)\n]+)\))?:\s*/);
+      return match ? match[1].trim() : null;
+    };
     spindle.log.info("Resolving connection profile...");
     const connId = persistedSettings.connectionId;
     let conn = null;
@@ -172,45 +198,38 @@ MemberName (Username): The message content
     spindle.sendToFrontend({ type: "generation_started" }, userId);
     const stream = spindle.generate.rawStream({
       type: "raw",
-      provider: conn.provider,
-      model: conn.model,
       connection_id: conn.id,
       messages: promptMessages,
       userId
     });
     let fullText = "";
-    for await (const chunk of stream) {
-      if (chunk.type === "token") {
-        fullText += chunk.token;
-      } else if (chunk.type === "done") {
-        fullText = chunk.content || fullText;
-      }
-    }
-    spindle.log.info("Generation stream completed. Processing results...");
-    const chunks = fullText.split("---");
-    for (const chunk of chunks) {
-      if (!chunk.trim())
-        continue;
-      const match = chunk.trim().match(/^([^:(]+)(?:\s*\(([^)]+)\))?:\s*(.*)$/s);
-      let speakerName = "Unknown";
-      let username = "";
-      let content = chunk.trim();
-      if (match) {
-        speakerName = match[1].trim();
-        username = match[2] ? match[2].trim() : speakerName;
-        content = match[3].trim();
-      }
-      const speaker = councilMembers.find((m) => m.name.toLowerCase() === speakerName.toLowerCase());
+    let streamBuffer = "";
+    let typingSpeaker = null;
+    const setTypingSpeaker = (speakerName) => {
+      if (speakerName === typingSpeaker)
+        return;
+      typingSpeaker = speakerName;
+      spindle.sendToFrontend({
+        type: "typing_status",
+        speakerName: speakerName || undefined
+      }, userId);
+    };
+    const flushChunk = async (rawChunk) => {
+      const parsed = parseChunk(rawChunk);
+      if (!parsed)
+        return;
+      const speaker = councilMembers.find((m) => m.name.toLowerCase() === parsed.speakerName.toLowerCase());
       const avatarUrl = speaker ? speaker.avatarUrl : null;
       const uiMsg = {
-        name: speakerName,
-        username: username || speakerName,
-        content,
+        name: parsed.speakerName,
+        username: parsed.username || parsed.speakerName,
+        content: parsed.content,
         avatarUrl,
         isUser: false,
         ts: Date.now()
       };
       chatroomHistory.push(uiMsg);
+      await saveChatroomHistory(chatId, chatroomHistory);
       spindle.sendToFrontend({
         type: "new_message",
         name: uiMsg.name,
@@ -219,8 +238,37 @@ MemberName (Username): The message content
         avatarUrl: uiMsg.avatarUrl,
         isUser: uiMsg.isUser
       }, userId);
+    };
+    const consumeText = async (text) => {
+      if (!text)
+        return;
+      fullText += text;
+      streamBuffer += text;
+      let separatorIndex = streamBuffer.indexOf("---");
+      while (separatorIndex !== -1) {
+        const completedChunk = streamBuffer.slice(0, separatorIndex);
+        streamBuffer = streamBuffer.slice(separatorIndex + 3);
+        await flushChunk(completedChunk);
+        setTypingSpeaker(null);
+        separatorIndex = streamBuffer.indexOf("---");
+      }
+      setTypingSpeaker(detectTypingSpeaker(streamBuffer));
+    };
+    for await (const chunk of stream) {
+      if (chunk.type === "token") {
+        await consumeText(chunk.token);
+      } else if (chunk.type === "done") {
+        const finalContent = chunk.content || "";
+        if (!fullText && finalContent) {
+          await consumeText(finalContent);
+        } else if (finalContent.startsWith(fullText)) {
+          await consumeText(finalContent.slice(fullText.length));
+        }
+      }
     }
-    await saveChatroomHistory(chatId, chatroomHistory);
+    spindle.log.info("Generation stream completed. Processing results...");
+    await flushChunk(streamBuffer);
+    setTypingSpeaker(null);
     spindle.log.info("Successfully dispatched messages to frontend.");
     spindle.sendToFrontend({ type: "generation_ended" }, userId);
   } catch (e) {
