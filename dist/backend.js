@@ -107,14 +107,17 @@ async function runCouncilGeneration(userId) {
     }
     spindle.log.info("Fetching active persona...");
     const activePersona = await spindle.personas.getActive(userId);
+    const personaName = activePersona?.name?.trim() || "the user";
     const councilContext = councilMembers.map((m) => `- ${m.name}: ${m.role}. Personality: ${m.personality}`).join("\\n");
     const memberCount = councilMembers.length;
     const targetResponses = memberCount === 1 ? 1 : 1 + Math.floor(Math.random() * memberCount);
     const responseInstruction = memberCount === 1 ? `Write exactly 1 new message in the chatroom.` : `Write ${targetResponses} new message${targetResponses > 1 ? "s" : ""} in the chatroom.`;
     const systemPrompt = `You are running a live internet shitposting chatroom for the "council members" who are watching a story unfold.
 They are watching the main story chat and reacting to it in real-time.
-They talk casually, use internet slang, bicker with each other, and gossip about the characters or the author ({{user}}).
-This is {{user}}'s chatroom, so council members should refer to {{user}} in the first person when talking about or to them.
+They talk casually, use internet slang, bicker with each other, quote each other, and gossip about the characters or the author.
+This is ${personaName}'s chatroom. When council members talk about ${personaName}'s actions, choices, feelings, or situation, phrase that from ${personaName}'s point of view using first-person pronouns like "I", "me", and "my" instead of third-person references.
+When speaking directly to ${personaName}, address them as "you" or by name.
+Let council members react to what the other council members just said when it fits: agree, disagree, pile on, tease each other, answer each other, or continue a running joke. The chatroom should feel like an actual live back-and-forth, not isolated standalone comments.
 
 COUNCIL MEMBERS:
 ${councilContext}
@@ -153,7 +156,7 @@ MemberName (Username): The message content
       };
     };
     const detectTypingSpeaker = (rawChunk) => {
-      const match = rawChunk.match(/^\s*([^:(\n]+?)(?:\s*\(([^)\n]+)\))?:\s*/);
+      const match = rawChunk.match(/^\s*([^:(\n]+?)(?:\s*\(([^)\n]+)\))?:\s*\S[\s\S]*$/);
       return match ? match[1].trim() : null;
     };
     spindle.log.info("Resolving connection profile...");
@@ -248,8 +251,8 @@ MemberName (Username): The message content
       while (separatorIndex !== -1) {
         const completedChunk = streamBuffer.slice(0, separatorIndex);
         streamBuffer = streamBuffer.slice(separatorIndex + 3);
-        await flushChunk(completedChunk);
         setTypingSpeaker(null);
+        await flushChunk(completedChunk);
         separatorIndex = streamBuffer.indexOf("---");
       }
       setTypingSpeaker(detectTypingSpeaker(streamBuffer));
@@ -267,8 +270,8 @@ MemberName (Username): The message content
       }
     }
     spindle.log.info("Generation stream completed. Processing results...");
-    await flushChunk(streamBuffer);
     setTypingSpeaker(null);
+    await flushChunk(streamBuffer);
     spindle.log.info("Successfully dispatched messages to frontend.");
     spindle.sendToFrontend({ type: "generation_ended" }, userId);
   } catch (e) {
