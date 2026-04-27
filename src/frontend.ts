@@ -654,6 +654,31 @@ export function setup(ctx: SpindleFrontendContext) {
     });
   }
 
+  function resetWidgetToSaneDefaults() {
+    if (syncFullscreenStateFromHost()) {
+      fsBtn.click();
+    }
+
+    const defaults = getDefaultWidgetSize();
+    const pos = getDefaultWidgetPosition();
+    expandedHeight = defaults.height;
+
+    if (isCollapsed) {
+      isCollapsed = false;
+      setWidgetSize(defaults.width, defaults.height);
+      updateCollapse();
+    } else {
+      setWidgetSize(defaults.width, defaults.height);
+      syncHostWrapperSize();
+    }
+
+    widget.moveTo(pos.x, pos.y);
+    requestAnimationFrame(() => {
+      clampWidgetToViewport();
+      persistWidgetState();
+    });
+  }
+
   // Apply our chrome to the host wrapper, and make widget.root fill it.
   widget.root.style.cssText = `
     width:100%;height:100%;
@@ -842,7 +867,7 @@ export function setup(ctx: SpindleFrontendContext) {
       });
 
       if (result.selectedKey === 'reset') {
-        restoreSaneWidgetDefaults();
+        resetWidgetToSaneDefaults();
       } else if (result.selectedKey === 'hide') {
         setWidgetVisible(false);
       }

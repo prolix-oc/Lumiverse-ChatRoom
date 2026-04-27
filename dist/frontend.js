@@ -510,6 +510,27 @@ function setup(ctx) {
       persistWidgetState();
     });
   }
+  function resetWidgetToSaneDefaults() {
+    if (syncFullscreenStateFromHost()) {
+      fsBtn.click();
+    }
+    const defaults = getDefaultWidgetSize();
+    const pos = getDefaultWidgetPosition();
+    expandedHeight = defaults.height;
+    if (isCollapsed) {
+      isCollapsed = false;
+      setWidgetSize(defaults.width, defaults.height);
+      updateCollapse();
+    } else {
+      setWidgetSize(defaults.width, defaults.height);
+      syncHostWrapperSize();
+    }
+    widget.moveTo(pos.x, pos.y);
+    requestAnimationFrame(() => {
+      clampWidgetToViewport();
+      persistWidgetState();
+    });
+  }
   widget.root.style.cssText = `
     width:100%;height:100%;
     display:flex;flex-direction:column;
@@ -674,7 +695,7 @@ function setup(ctx) {
         ]
       });
       if (result.selectedKey === "reset") {
-        restoreSaneWidgetDefaults();
+        resetWidgetToSaneDefaults();
       } else if (result.selectedKey === "hide") {
         setWidgetVisible(false);
       }
