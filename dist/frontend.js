@@ -422,7 +422,7 @@ function setup(ctx) {
     .chatroom-scroll::-webkit-scrollbar { width: 5px; }
     .chatroom-scroll::-webkit-scrollbar-track { background: transparent; }
     .chatroom-scroll::-webkit-scrollbar-thumb { background: var(--lumiverse-border); border-radius: 3px; }
-    .chatroom-msg { animation: msgIn .2s ease-out; }
+    .chatroom-msg-entering { animation: msgIn .2s ease-out; }
     .chatroom-copy-btn { opacity: .45; transition: opacity .15s, background .15s, transform .1s; }
     .chatroom-copy-btn:hover, .chatroom-copy-btn:focus-visible { opacity: 1; }
     .chatroom-copy-btn:active { transform: scale(.96); }
@@ -805,6 +805,8 @@ function setup(ctx) {
   let typingPlaceholderVisible = false;
   let typingPlaceholderSpeakerName = null;
   let localUserMessageCounter = 0;
+  let localMessageCounter = 0;
+  const animatedMessageIds = new Set;
   function isGroupedAt(index) {
     if (index <= 0)
       return false;
@@ -830,6 +832,10 @@ function setup(ctx) {
     localUserMessageCounter += 1;
     return `local-user-${Date.now()}-${localUserMessageCounter}`;
   }
+  function createLocalMessageId(prefix) {
+    localMessageCounter += 1;
+    return `${prefix}-msg-${Date.now()}-${localMessageCounter}`;
+  }
   function getVirtualItemSignature(index) {
     if (isTypingPlaceholderIndex(index)) {
       return [
@@ -840,6 +846,7 @@ function setup(ctx) {
     }
     const msg = allMessages[index];
     return [
+      msg.messageId,
       msg.isUser ? "user" : "assistant",
       msg.name,
       msg.username,
@@ -950,6 +957,10 @@ function setup(ctx) {
       ${isUser ? "align-self:flex-end;flex-direction:row-reverse;" : "align-self:flex-start;"}
       ${isGrouped ? "margin-top:2px;" : "margin-top:12px;"}
     `;
+    if (!animatedMessageIds.has(msg.messageId)) {
+      wrap.classList.add("chatroom-msg-entering");
+      animatedMessageIds.add(msg.messageId);
+    }
     const avatarWrap = document.createElement("div");
     avatarWrap.style.cssText = `flex-shrink:0;width:32px;height:32px;${isGrouped ? "visibility:hidden;" : ""}`;
     if (msg.avatarUrl) {
@@ -1445,11 +1456,16 @@ function setup(ctx) {
       return;
     ctx.sendToBackend({ type: "trigger_generation" });
   });
-  function appendMessage(name, username, content, avatarUrl, isUser = false, clientMessageId) {
+  function appendMessage(name, username, content, avatarUrl, isUser = false, clientMessageId, messageId, shouldAnimate = true) {
     if (!isUser && typingPlaceholderVisible) {
       setTypingPlaceholder(null, false, false);
     }
+    const nextMessageId = messageId || createLocalMessageId(isUser ? "user" : name === "System" ? "system" : "assistant");
+    if (!shouldAnimate) {
+      animatedMessageIds.add(nextMessageId);
+    }
     allMessages.push({
+      messageId: nextMessageId,
       name,
       username,
       content,
@@ -1497,6 +1513,7 @@ function setup(ctx) {
   function clearMessages() {
     allMessages = [];
     msgHeightCache.clear();
+    animatedMessageIds.clear();
     lastSenderId = null;
     unreadCount = 0;
     pendingUserRetryCandidateIndex = null;
@@ -1508,8 +1525,12 @@ function setup(ctx) {
   function loadHistory(history) {
     allMessages = [];
     msgHeightCache.clear();
+    animatedMessageIds.clear();
     for (const msg of history) {
+      const messageId = createLocalMessageId(msg.isUser ? "user" : "assistant");
+      animatedMessageIds.add(messageId);
       allMessages.push({
+        messageId,
         name: msg.name,
         username: msg.username,
         content: msg.content,

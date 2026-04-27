@@ -554,7 +554,7 @@ export function setup(ctx: SpindleFrontendContext) {
     .chatroom-scroll::-webkit-scrollbar { width: 5px; }
     .chatroom-scroll::-webkit-scrollbar-track { background: transparent; }
     .chatroom-scroll::-webkit-scrollbar-thumb { background: var(--lumiverse-border); border-radius: 3px; }
-    .chatroom-msg { animation: msgIn .2s ease-out; }
+    .chatroom-msg-entering { animation: msgIn .2s ease-out; }
     .chatroom-copy-btn { opacity: .45; transition: opacity .15s, background .15s, transform .1s; }
     .chatroom-copy-btn:hover, .chatroom-copy-btn:focus-visible { opacity: 1; }
     .chatroom-copy-btn:active { transform: scale(.96); }
@@ -986,6 +986,7 @@ export function setup(ctx: SpindleFrontendContext) {
 
   // ── Virtual Message List State ──
   interface ChatMessage {
+    messageId: string;
     name: string;
     username: string;
     content: string;
@@ -1006,6 +1007,8 @@ export function setup(ctx: SpindleFrontendContext) {
   let typingPlaceholderVisible = false;
   let typingPlaceholderSpeakerName: string | null = null;
   let localUserMessageCounter = 0;
+  let localMessageCounter = 0;
+  const animatedMessageIds = new Set<string>();
 
   function isGroupedAt(index: number): boolean {
     if (index <= 0) return false;
@@ -1039,6 +1042,11 @@ export function setup(ctx: SpindleFrontendContext) {
     return `local-user-${Date.now()}-${localUserMessageCounter}`;
   }
 
+  function createLocalMessageId(prefix: 'user' | 'assistant' | 'system') {
+    localMessageCounter += 1;
+    return `${prefix}-msg-${Date.now()}-${localMessageCounter}`;
+  }
+
   function getVirtualItemSignature(index: number) {
     if (isTypingPlaceholderIndex(index)) {
       return [
@@ -1050,6 +1058,7 @@ export function setup(ctx: SpindleFrontendContext) {
 
     const msg = allMessages[index];
     return [
+      msg.messageId,
       msg.isUser ? 'user' : 'assistant',
       msg.name,
       msg.username,
@@ -1176,6 +1185,10 @@ export function setup(ctx: SpindleFrontendContext) {
       ${isUser ? 'align-self:flex-end;flex-direction:row-reverse;' : 'align-self:flex-start;'}
       ${isGrouped ? 'margin-top:2px;' : 'margin-top:12px;'}
     `;
+    if (!animatedMessageIds.has(msg.messageId)) {
+      wrap.classList.add('chatroom-msg-entering');
+      animatedMessageIds.add(msg.messageId);
+    }
 
     // Avatar (only show if not grouped)
     const avatarWrap = document.createElement('div');
@@ -1737,12 +1750,18 @@ export function setup(ctx: SpindleFrontendContext) {
   });
 
   // ── Append message ──
-  function appendMessage(name: string, username: string, content: string, avatarUrl: string | null, isUser: boolean = false, clientMessageId?: string) {
+  function appendMessage(name: string, username: string, content: string, avatarUrl: string | null, isUser: boolean = false, clientMessageId?: string, messageId?: string, shouldAnimate = true) {
     if (!isUser && typingPlaceholderVisible) {
       setTypingPlaceholder(null, false, false);
     }
 
+    const nextMessageId = messageId || createLocalMessageId(isUser ? 'user' : (name === 'System' ? 'system' : 'assistant'));
+    if (!shouldAnimate) {
+      animatedMessageIds.add(nextMessageId);
+    }
+
     allMessages.push({
+      messageId: nextMessageId,
       name,
       username,
       content,
@@ -1802,6 +1821,7 @@ export function setup(ctx: SpindleFrontendContext) {
   function clearMessages() {
     allMessages = [];
     msgHeightCache.clear();
+    animatedMessageIds.clear();
     lastSenderId = null;
     unreadCount = 0;
     pendingUserRetryCandidateIndex = null;
@@ -1814,8 +1834,12 @@ export function setup(ctx: SpindleFrontendContext) {
   function loadHistory(history: any[]) {
     allMessages = [];
     msgHeightCache.clear();
+    animatedMessageIds.clear();
     for (const msg of history) {
+      const messageId = createLocalMessageId(msg.isUser ? 'user' : 'assistant');
+      animatedMessageIds.add(messageId);
       allMessages.push({
+        messageId,
         name: msg.name,
         username: msg.username,
         content: msg.content,
