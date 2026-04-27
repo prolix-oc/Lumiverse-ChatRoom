@@ -1272,6 +1272,10 @@ function setup(ctx) {
   settingsContainer.appendChild(configCard);
   tab.root.appendChild(settingsContainer);
   const isMobile = window.innerWidth <= 768 || "ontouchstart" in window;
+  const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+  const WIDGET_TRANSITION = prefersReducedMotion.matches ? "0ms linear" : "220ms cubic-bezier(0.22, 1, 0.36, 1)";
+  const WIDGET_TRANSITION_FAST = prefersReducedMotion.matches ? "0ms linear" : "160ms cubic-bezier(0.4, 0, 0.2, 1)";
+  const WIDGET_TRANSITION_MS = prefersReducedMotion.matches ? 0 : 220;
   function getDefaultWidgetSize() {
     return {
       width: isMobile ? Math.min(380, window.innerWidth - 16) : 440,
@@ -1462,17 +1466,70 @@ function setup(ctx) {
     overflow:hidden;
     font-family:var(--lumiverse-font-family, system-ui, -apple-system, sans-serif);
     position:relative;
+    transform-origin:bottom right;
+    will-change:width,height,transform,opacity,border-radius;
+    transition:
+      width var(--lcs-chat-widget-transition, ${WIDGET_TRANSITION}),
+      height var(--lcs-chat-widget-transition, ${WIDGET_TRANSITION}),
+      border-radius var(--lcs-chat-widget-transition, ${WIDGET_TRANSITION}),
+      box-shadow var(--lcs-chat-widget-transition, ${WIDGET_TRANSITION}),
+      opacity var(--lcs-chat-widget-transition-fast, ${WIDGET_TRANSITION_FAST}),
+      transform var(--lcs-chat-widget-transition, ${WIDGET_TRANSITION}),
+      filter var(--lcs-chat-widget-transition-fast, ${WIDGET_TRANSITION_FAST});
   `;
+  hostWrapper.style.setProperty("transform-origin", "bottom right");
+  hostWrapper.style.setProperty("will-change", "width, height, transform, opacity");
+  hostWrapper.style.setProperty("transition", [
+    `width var(--lcs-chat-widget-transition, ${WIDGET_TRANSITION})`,
+    `height var(--lcs-chat-widget-transition, ${WIDGET_TRANSITION})`,
+    `opacity var(--lcs-chat-widget-transition-fast, ${WIDGET_TRANSITION_FAST})`,
+    `transform var(--lcs-chat-widget-transition, ${WIDGET_TRANSITION})`,
+    `left var(--lcs-chat-widget-transition, ${WIDGET_TRANSITION})`,
+    `top var(--lcs-chat-widget-transition, ${WIDGET_TRANSITION})`
+  ].join(", "));
+  function getTypographyPreferenceSignature() {
+    const rootStyle = getComputedStyle(document.documentElement);
+    return [
+      rootStyle.getPropertyValue("--lumiverse-font-scale").trim() || "1",
+      rootStyle.getPropertyValue("--lumiverse-font-family").trim() || ""
+    ].join("|");
+  }
+  let typographyPreferenceSignature = "";
+  function applyWidgetPreferenceVars() {
+    shell.style.setProperty("--lcs-chat-font-scale", "var(--lumiverse-font-scale, 1)");
+    shell.style.setProperty("--lcs-chat-name-font-size", "calc(11px * var(--lcs-chat-font-scale, 1))");
+    shell.style.setProperty("--lcs-chat-message-font-size", "calc(13.5px * var(--lcs-chat-font-scale, 1))");
+    shell.style.setProperty("--lcs-chat-meta-font-size", "calc(10px * var(--lcs-chat-font-scale, 1))");
+    shell.style.setProperty("--lcs-chat-input-font-size", "calc(14px * var(--lcs-chat-font-scale, 1))");
+    shell.style.setProperty("--lcs-chat-input-font-size-mobile", "max(16px, calc(14px * var(--lcs-chat-font-scale, 1)))");
+    shell.style.setProperty("--lcs-chat-widget-transition", WIDGET_TRANSITION);
+    shell.style.setProperty("--lcs-chat-widget-transition-fast", WIDGET_TRANSITION_FAST);
+    const nextSignature = getTypographyPreferenceSignature();
+    const changed = typographyPreferenceSignature !== "" && typographyPreferenceSignature !== nextSignature;
+    typographyPreferenceSignature = nextSignature;
+    return changed;
+  }
+  applyWidgetPreferenceVars();
   let widgetVisible = false;
   let requestedWidgetVisible = false;
+  let widgetVisibilityTimer = null;
   function applyWidgetVisibility() {
     const visible = requestedWidgetVisible && isInChatView();
     widgetVisible = visible;
-    widget.setVisible(visible);
+    if (widgetVisibilityTimer != null) {
+      window.clearTimeout(widgetVisibilityTimer);
+      widgetVisibilityTimer = null;
+    }
     if (visible) {
+      widget.setVisible(true);
+      shell.style.visibility = "visible";
       shell.style.removeProperty("opacity");
-      shell.style.removeProperty("visibility");
-      shell.style.removeProperty("pointer-events");
+      shell.style.removeProperty("filter");
+      shell.style.pointerEvents = "auto";
+      requestAnimationFrame(() => {
+        shell.style.opacity = "1";
+        shell.style.transform = "translateY(0) scale(1)";
+      });
       const w = shell.offsetWidth;
       const h = shell.offsetHeight;
       if (w < 50 || h < 50) {
@@ -1481,8 +1538,15 @@ function setup(ctx) {
       }
     } else {
       shell.style.opacity = "0";
-      shell.style.visibility = "hidden";
       shell.style.pointerEvents = "none";
+      shell.style.transform = "translateY(12px) scale(0.975)";
+      shell.style.filter = "saturate(0.92)";
+      widgetVisibilityTimer = window.setTimeout(() => {
+        shell.style.visibility = "hidden";
+        shell.style.removeProperty("filter");
+        widget.setVisible(false);
+        widgetVisibilityTimer = null;
+      }, WIDGET_TRANSITION_MS);
     }
   }
   function setWidgetVisible(visible) {
@@ -1531,7 +1595,16 @@ function setup(ctx) {
       x: pos.x,
       y: pos.y,
       w: shell.offsetWidth,
-      h: persistedHeight
+      h: persistedHeight,
+      collapsed: isCollapsed
+    });
+  }
+  function persistCollapsedState() {
+    if (isMobile)
+      return;
+    ctx.sendToBackend({
+      type: "save_widget_state",
+      collapsed: isCollapsed
     });
   }
   function clampWidgetToViewport() {
@@ -1688,7 +1761,13 @@ function setup(ctx) {
     persistWidgetState();
   });
   const body = document.createElement("div");
-  body.style.cssText = "flex:1;display:flex;flex-direction:column;overflow:hidden;min-height:0;";
+  body.style.cssText = `
+    flex:1;display:flex;flex-direction:column;overflow:hidden;min-height:0;
+    opacity:1;transform:translateY(0) scale(1);transform-origin:top center;
+    transition:
+      opacity var(--lcs-chat-widget-transition-fast, ${WIDGET_TRANSITION_FAST}),
+      transform var(--lcs-chat-widget-transition-fast, ${WIDGET_TRANSITION_FAST});
+  `;
   const messageList = document.createElement("div");
   messageList.className = "chatroom-scroll";
   messageList.style.cssText = `
@@ -1703,7 +1782,7 @@ function setup(ctx) {
   let allMessages = [];
   const msgHeightCache = new Map;
   const ESTIMATED_MSG_HEIGHT = 60;
-  const VIRTUAL_OVERSCAN = 12;
+  const VIRTUAL_OVERSCAN = isMobile ? 4 : 6;
   const VIRTUAL_LIST_PADDING = 16;
   let isStickToBottom = true;
   let pendingUserRetryCandidateIndex = null;
@@ -1719,6 +1798,13 @@ function setup(ctx) {
   let virtualRenderRaf = null;
   let pendingRenderShouldStickToBottom = false;
   const renderedRows = new Map;
+  const dirtyMeasurementKeys = new Set;
+  function invalidateVirtualMeasurements(shouldScrollToBottom = isStickToBottom) {
+    msgHeightCache.clear();
+    dirtyMeasurementKeys.clear();
+    rowVirtualizer.measure();
+    refreshVirtualizer(shouldScrollToBottom, "auto");
+  }
   function isGroupedAt(index) {
     if (index <= 0)
       return false;
@@ -1871,7 +1957,7 @@ function setup(ctx) {
     col.style.cssText = "display:flex;flex-direction:column;gap:2px;min-width:0;align-items:flex-start;";
     if (!isGrouped) {
       const nameEl = document.createElement("div");
-      nameEl.style.cssText = "font-size:11px;font-weight:700;padding:0 6px;";
+      nameEl.style.cssText = "font-size:var(--lcs-chat-name-font-size);font-weight:700;padding:0 6px;";
       nameEl.style.color = memberColor(speakerName);
       nameEl.textContent = speakerName;
       col.appendChild(nameEl);
@@ -1879,7 +1965,7 @@ function setup(ctx) {
     const bubble = document.createElement("div");
     bubble.style.cssText = `
       padding:10px 14px;border-radius:18px;border-bottom-left-radius:4px;
-      font-size:12.5px;line-height:1.45;word-break:break-word;
+      font-size:var(--lcs-chat-message-font-size);line-height:1.45;word-break:break-word;
       background:var(--lumiverse-fill-subtle);color:var(--lumiverse-text-dim);
       display:flex;align-items:center;gap:8px;font-style:italic;
     `;
@@ -1932,7 +2018,7 @@ function setup(ctx) {
     col.style.cssText = `display:flex;flex-direction:column;gap:2px;min-width:0;${isUser ? "align-items:flex-end;" : "align-items:flex-start;"}`;
     if (!isGrouped) {
       const nameEl = document.createElement("div");
-      nameEl.style.cssText = "font-size:11px;font-weight:700;padding:0 6px;";
+      nameEl.style.cssText = "font-size:var(--lcs-chat-name-font-size);font-weight:700;padding:0 6px;";
       nameEl.style.color = isUser ? "var(--lumiverse-primary)" : memberColor(msg.name);
       nameEl.textContent = isUser ? userPersona?.name || "You" : msg.username || msg.name;
       col.appendChild(nameEl);
@@ -1940,7 +2026,7 @@ function setup(ctx) {
     const bubble = document.createElement("div");
     bubble.className = "chatroom-rich";
     bubble.style.cssText = `
-      padding:10px 14px;border-radius:18px;font-size:13.5px;
+      padding:10px 14px;border-radius:18px;font-size:var(--lcs-chat-message-font-size);
       line-height:1.45;word-break:break-word;
       ${isUser ? "background:var(--lumiverse-primary);color:white;border-bottom-right-radius:4px;" : "background:var(--lumiverse-fill-subtle);color:var(--lumiverse-text);border-bottom-left-radius:4px;"}
     `;
@@ -1984,7 +2070,7 @@ function setup(ctx) {
       retryBtn.title = "Retry council response";
       retryBtn.style.cssText = `
         border:none;background:transparent;cursor:pointer;padding:0 4px;
-        font-size:11px;font-weight:600;color:${isUser ? "rgba(255,255,255,0.92)" : "var(--lumiverse-primary)"};
+        font-size:var(--lcs-chat-meta-font-size);font-weight:600;color:${isUser ? "rgba(255,255,255,0.92)" : "var(--lumiverse-primary)"};
         opacity:.82;
       `;
       retryBtn.addEventListener("click", () => {
@@ -1998,7 +2084,7 @@ function setup(ctx) {
       metaRow.appendChild(retryBtn);
     }
     const timeEl = document.createElement("div");
-    timeEl.style.cssText = "font-size:10px;color:var(--lumiverse-text-dim);";
+    timeEl.style.cssText = "font-size:var(--lcs-chat-meta-font-size);color:var(--lumiverse-text-dim);";
     const ts = new Date(msg.timestamp);
     timeEl.textContent = ts.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
     metaRow.appendChild(timeEl);
@@ -2057,6 +2143,7 @@ function setup(ctx) {
         row = isTypingPlaceholderIndex(item.index) ? createTypingPlaceholderElement(item.index) : createMessageElement(item.index);
         renderedRows.set(key, row);
         rows.push(row);
+        dirtyMeasurementKeys.add(key);
       }
       row.setAttribute("data-index", String(item.index));
       row.dataset.vkey = key;
@@ -2089,12 +2176,15 @@ function setup(ctx) {
       virtualContent.removeChild(cursor);
       cursor = next;
     }
-    rowVirtualizer.measureElement(null);
     for (const row of desiredRows) {
+      const key = row.dataset.vkey;
+      if (!key || !dirtyMeasurementKeys.has(key) && msgHeightCache.has(key))
+        continue;
       rowVirtualizer.measureElement(row);
       const index = Number.parseInt(row.getAttribute("data-index") || "-1", 10);
       if (index >= 0) {
         msgHeightCache.set(getVirtualItemKey(index), row.offsetHeight);
+        dirtyMeasurementKeys.delete(key);
       }
     }
   }
@@ -2118,7 +2208,7 @@ function setup(ctx) {
   inputField.style.cssText = `
     flex:1;padding:10px 14px;border:1px solid var(--lumiverse-border);
     border-radius:18px;background:var(--lumiverse-fill-subtle);color:var(--lumiverse-text);
-    font-size:${isMobile ? "16px" : "14px"};outline:none;min-width:0;resize:none;
+    font-size:${isMobile ? "var(--lcs-chat-input-font-size-mobile)" : "var(--lcs-chat-input-font-size)"};outline:none;min-width:0;resize:none;
     font-family:inherit;line-height:1.4;min-height:40px;overflow-y:hidden;
   `;
   function resetInputHeight() {
@@ -2191,8 +2281,20 @@ function setup(ctx) {
     genButton.style.background = glassEnabled ? "color-mix(in srgb, var(--lumiverse-fill-subtle) 84%, var(--lcs-glass-bg, transparent) 16%)" : "var(--lumiverse-fill-subtle)";
     genButton.style.borderColor = glassEnabled ? "var(--lcs-glass-border, var(--lumiverse-border))" : "var(--lumiverse-border)";
   }
-  applyWidgetTheme();
-  const rootThemeObserver = new MutationObserver(() => applyWidgetTheme());
+  let themeSyncRaf = null;
+  function syncWidgetVisualPreferences() {
+    if (themeSyncRaf != null)
+      return;
+    themeSyncRaf = requestAnimationFrame(() => {
+      themeSyncRaf = null;
+      applyWidgetTheme();
+      if (applyWidgetPreferenceVars()) {
+        invalidateVirtualMeasurements(false);
+      }
+    });
+  }
+  syncWidgetVisualPreferences();
+  const rootThemeObserver = new MutationObserver(() => syncWidgetVisualPreferences());
   rootThemeObserver.observe(document.documentElement, {
     attributes: true,
     attributeFilter: ["data-glass", "data-theme-mode", "style", "class"]
@@ -2289,7 +2391,9 @@ function setup(ctx) {
   }
   function updateCollapse() {
     if (isCollapsed) {
-      body.style.display = "none";
+      body.style.pointerEvents = "none";
+      body.style.opacity = "0";
+      body.style.transform = "translateY(-10px) scale(0.985)";
       collapseBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>`;
       collapseBtn.title = "Expand";
       setWidgetSize(shell.offsetWidth, header.offsetHeight);
@@ -2299,7 +2403,9 @@ function setup(ctx) {
         badge.style.display = "block";
       }
     } else {
-      body.style.display = "flex";
+      body.style.pointerEvents = "auto";
+      body.style.opacity = "1";
+      body.style.transform = "translateY(0) scale(1)";
       collapseBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>`;
       collapseBtn.title = "Collapse";
       if (!isFullscreen)
@@ -2318,6 +2424,7 @@ function setup(ctx) {
       expandedHeight = shell.offsetHeight;
     isCollapsed = !isCollapsed;
     updateCollapse();
+    persistWidgetState();
   });
   const supportsNativeFullscreen = typeof widget.setFullscreen === "function";
   fsBtn.addEventListener("click", () => {
@@ -2345,6 +2452,7 @@ function setup(ctx) {
       preFullscreenState = { w: shell.offsetWidth, h: shell.offsetHeight, x: widget.getPosition().x, y: widget.getPosition().y };
       isFullscreen = true;
       isCollapsed = false;
+      persistCollapsedState();
       if (supportsNativeFullscreen) {
         widget.setFullscreen(true);
       } else {
@@ -2570,15 +2678,13 @@ function setup(ctx) {
         }
       }
       connectionSelect.value = payload.connectionId || "";
+      const shouldShowWidget = Boolean(payload.history && payload.history.length > 0 || payload.hasActiveChat);
       if (payload.history && payload.history.length > 0) {
         loadHistory(payload.history);
-        setWidgetVisible(true);
       } else if (payload.hasActiveChat) {
         clearMessages();
-        setWidgetVisible(true);
       } else {
         clearMessages();
-        setWidgetVisible(false);
       }
       if (!isMobile && payload.widgetX != null && payload.widgetY != null) {
         widget.moveTo(payload.widgetX, payload.widgetY);
@@ -2588,6 +2694,9 @@ function setup(ctx) {
         expandedHeight = payload.widgetH;
         syncHostWrapperSize();
       }
+      isCollapsed = payload.widgetCollapsed ?? false;
+      updateCollapse();
+      setWidgetVisible(shouldShowWidget);
     } else if (payload.type === "hide_widget") {
       setWidgetVisible(false);
       stopAutoTimer();
@@ -2635,6 +2744,10 @@ function setup(ctx) {
   return () => {
     if (autoTimer)
       clearTimeout(autoTimer);
+    if (widgetVisibilityTimer != null)
+      window.clearTimeout(widgetVisibilityTimer);
+    if (themeSyncRaf != null)
+      cancelAnimationFrame(themeSyncRaf);
     window.removeEventListener("pointerdown", onWindowPointerDown, true);
     window.removeEventListener("popstate", syncRouteVisibility);
     window.removeEventListener("hashchange", syncRouteVisibility);

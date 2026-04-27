@@ -452,6 +452,7 @@ spindle.onFrontendMessage(async (payload, userId) => {
       widgetY: settings.widgetY ?? null,
       widgetW: settings.widgetW ?? null,
       widgetH: settings.widgetH ?? null,
+      widgetCollapsed: settings.widgetCollapsed ?? false,
       chatroomName: chatroomName || undefined
     }, resolvedUserId);
     return;
@@ -537,7 +538,8 @@ spindle.onFrontendMessage(async (payload, userId) => {
       widgetX: payload.x != null ? Math.round(payload.x) : settings.widgetX,
       widgetY: payload.y != null ? Math.round(payload.y) : settings.widgetY,
       widgetW: payload.w != null ? Math.round(payload.w) : settings.widgetW,
-      widgetH: payload.h != null ? Math.round(payload.h) : settings.widgetH
+      widgetH: payload.h != null ? Math.round(payload.h) : settings.widgetH,
+      widgetCollapsed: typeof payload.collapsed === "boolean" ? payload.collapsed : settings.widgetCollapsed
     }), resolvedUserId);
     return;
   }

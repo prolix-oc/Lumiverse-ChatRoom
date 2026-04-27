@@ -43,6 +43,7 @@ interface PersistedChatroomSettings {
   widgetY?: number;
   widgetW?: number;
   widgetH?: number;
+  widgetCollapsed?: boolean;
   chatroomNames?: Record<string, string>;
 }
 
@@ -586,6 +587,7 @@ spindle.onFrontendMessage(async (payload: any, userId) => {
       widgetY: settings.widgetY ?? null,
       widgetW: settings.widgetW ?? null,
       widgetH: settings.widgetH ?? null,
+      widgetCollapsed: settings.widgetCollapsed ?? false,
       chatroomName: chatroomName || undefined,
     }, resolvedUserId);
     return;
@@ -686,6 +688,7 @@ spindle.onFrontendMessage(async (payload: any, userId) => {
       widgetY: payload.y != null ? Math.round(payload.y) : settings.widgetY,
       widgetW: payload.w != null ? Math.round(payload.w) : settings.widgetW,
       widgetH: payload.h != null ? Math.round(payload.h) : settings.widgetH,
+      widgetCollapsed: typeof payload.collapsed === 'boolean' ? payload.collapsed : settings.widgetCollapsed,
     }), resolvedUserId);
     return;
   }
