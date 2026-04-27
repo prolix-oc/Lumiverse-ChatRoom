@@ -1010,6 +1010,7 @@ export function setup(ctx: SpindleFrontendContext) {
     avatarUrl: string | null;
     isUser: boolean;
     timestamp: number;
+    canRetry?: boolean;
   }
   let allMessages: ChatMessage[] = [];
   const msgHeightCache = new Map<number, number>();
@@ -1017,6 +1018,8 @@ export function setup(ctx: SpindleFrontendContext) {
   const VIRTUAL_OVERSCAN = 12;
   let virtualRange = { start: 0, end: -1 };
   let isStickToBottom = true;
+  let pendingUserRetryCandidateIndex: number | null = null;
+  let currentGenerationRetryCandidateIndex: number | null = null;
 
   function isGroupedAt(index: number): boolean {
     if (index <= 0) return false;
@@ -1047,6 +1050,32 @@ export function setup(ctx: SpindleFrontendContext) {
     pinTypingIndicator();
     const target = isTypingIndicatorShown() ? loadingIndicator : bottomSpacer;
     target.scrollIntoView({ block: 'end', behavior });
+  }
+
+  function rerenderMessages(shouldScrollToBottom = false) {
+    virtualContent.innerHTML = '';
+    syncVirtualWindow(shouldScrollToBottom);
+  }
+
+  function clearRetryFlags(shouldScrollToBottom = false) {
+    let changed = false;
+    for (const msg of allMessages) {
+      if (msg.canRetry) {
+        msg.canRetry = false;
+        changed = true;
+      }
+    }
+
+    if (changed) {
+      rerenderMessages(shouldScrollToBottom);
+    }
+  }
+
+  function setRetryFlag(index: number | null) {
+    clearRetryFlags(false);
+    if (index == null || !allMessages[index]?.isUser) return;
+    allMessages[index].canRetry = true;
+    rerenderMessages(false);
   }
 
   function createMessageElement(index: number): HTMLElement {
@@ -1135,6 +1164,27 @@ export function setup(ctx: SpindleFrontendContext) {
       }, 1200);
     });
     metaRow.appendChild(copyBtn);
+
+    if (msg.isUser && msg.canRetry) {
+      const retryBtn = document.createElement('button');
+      makeInteractive(retryBtn);
+      retryBtn.type = 'button';
+      retryBtn.textContent = 'Retry';
+      retryBtn.title = 'Retry council response';
+      retryBtn.style.cssText = `
+        border:none;background:transparent;cursor:pointer;padding:0 4px;
+        font-size:11px;font-weight:600;color:${isUser ? 'rgba(255,255,255,0.92)' : 'var(--lumiverse-primary)'};
+        opacity:.82;
+      `;
+      retryBtn.addEventListener('click', () => {
+        if (isGenerating) return;
+        clearRetryFlags(false);
+        pendingUserRetryCandidateIndex = index;
+        currentGenerationRetryCandidateIndex = index;
+        ctx.sendToBackend({ type: 'retry_last_user_message' });
+      });
+      metaRow.appendChild(retryBtn);
+    }
 
     // Timestamp
     const timeEl = document.createElement('div');
@@ -1573,9 +1623,17 @@ export function setup(ctx: SpindleFrontendContext) {
       content,
       avatarUrl,
       isUser,
-      timestamp: Date.now()
+      timestamp: Date.now(),
+      canRetry: false,
     });
     lastSenderId = isUser ? '__user__' : name;
+
+    if (isUser) {
+      pendingUserRetryCandidateIndex = allMessages.length - 1;
+    } else {
+      pendingUserRetryCandidateIndex = null;
+      clearRetryFlags(false);
+    }
 
     const shouldScroll = isStickToBottom;
     syncVirtualWindow(shouldScroll);
@@ -1592,6 +1650,8 @@ export function setup(ctx: SpindleFrontendContext) {
     msgHeightCache.clear();
     lastSenderId = null;
     unreadCount = 0;
+    pendingUserRetryCandidateIndex = null;
+    currentGenerationRetryCandidateIndex = null;
     syncVirtualWindow(false);
   }
 
@@ -1605,12 +1665,17 @@ export function setup(ctx: SpindleFrontendContext) {
         content: msg.content,
         avatarUrl: msg.avatarUrl,
         isUser: msg.isUser,
-        timestamp: msg.timestamp || Date.now()
+        timestamp: msg.timestamp || Date.now(),
+        canRetry: false,
       });
     }
     lastSenderId = allMessages.length > 0
       ? (allMessages[allMessages.length - 1].isUser ? '__user__' : allMessages[allMessages.length - 1].name)
       : null;
+    pendingUserRetryCandidateIndex = allMessages.length > 0 && allMessages[allMessages.length - 1].isUser
+      ? allMessages.length - 1
+      : null;
+    currentGenerationRetryCandidateIndex = null;
     isStickToBottom = true;
     // Pre-position scroll at bottom so the first sync renders the tail end
     messageList.scrollTop = 99999999;
@@ -1706,6 +1771,8 @@ export function setup(ctx: SpindleFrontendContext) {
       isGenerating = true;
       genButton.disabled = true;
       genButton.style.opacity = '0.5';
+      clearRetryFlags(false);
+      currentGenerationRetryCandidateIndex = pendingUserRetryCandidateIndex;
       setTypingIndicator();
       loadingIndicator.style.display = 'flex';
       scrollToLatest('smooth');
@@ -1720,6 +1787,13 @@ export function setup(ctx: SpindleFrontendContext) {
       genButton.style.opacity = '1';
       setTypingIndicator();
       loadingIndicator.style.display = 'none';
+      const retryIndex = currentGenerationRetryCandidateIndex ?? pendingUserRetryCandidateIndex;
+      if (payload.failed && (payload.responseCount ?? 0) === 0 && retryIndex != null) {
+        setRetryFlag(retryIndex);
+      } else {
+        clearRetryFlags(false);
+      }
+      currentGenerationRetryCandidateIndex = null;
     } else if (payload.type === 'new_message') {
       appendMessage(payload.name, payload.username || payload.name, payload.content, payload.avatarUrl, payload.isUser);
     } else if (payload.type === 'error') {

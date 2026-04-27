@@ -62,30 +62,42 @@ function stripHtmlTags(text) {
 }
 function toGroupedChatroomTurns(messages) {
   const turns = [];
-  let assistantBuffer = [];
-  const flushAssistantBuffer = () => {
-    if (assistantBuffer.length === 0)
+  let buffer = [];
+  let currentRole = null;
+  const flushBuffer = () => {
+    if (buffer.length === 0 || !currentRole)
       return;
-    turns.push({
-      role: "assistant",
-      content: assistantBuffer.map((m) => `${m.name} (${m.username || m.name}): ${stripHtmlTags(m.content)}`).join(`
+    if (currentRole === "assistant") {
+      turns.push({
+        role: "assistant",
+        content: buffer.map((m) => `${m.name} (${m.username || m.name}): ${stripHtmlTags(m.content)}`).join(`
 ---
 `)
-    });
-    assistantBuffer = [];
-  };
-  for (const msg of messages) {
-    if (msg.isUser) {
-      flushAssistantBuffer();
+      });
+    } else {
       turns.push({
         role: "user",
-        content: `${msg.name || msg.username || "User"}: ${stripHtmlTags(msg.content)}`
+        content: buffer.map((m) => `${m.name || m.username || "User"}: ${stripHtmlTags(m.content)}`).join(`
+`)
       });
-      continue;
     }
-    assistantBuffer.push(msg);
+    buffer = [];
+  };
+  for (const msg of messages) {
+    const role = msg.isUser ? "user" : "assistant";
+    if (currentRole && role !== currentRole) {
+      flushBuffer();
+    }
+    currentRole = role;
+    buffer.push(msg);
   }
-  flushAssistantBuffer();
+  flushBuffer();
+  if (turns[0]?.role === "assistant") {
+    turns.unshift({
+      role: "user",
+      content: "Continue reacting in the council group chat to the story context above."
+    });
+  }
   return turns;
 }
 async function runCouncilGeneration(userId) {
@@ -93,6 +105,7 @@ async function runCouncilGeneration(userId) {
   if (state.isGenerating)
     return;
   state.isGenerating = true;
+  let generatedResponseCount = 0;
   spindle.log.info("Starting generation trigger processing");
   if (!spindle.permissions.has("generation")) {
     spindle.log.warn("Generation permission not granted");
@@ -144,7 +157,7 @@ When referring to ${personaName}'s thoughts, feelings, actions, choices, or situ
 When addressing ${personaName} directly, use second-person language like "you", "your", and "yours", or use ${personaName}'s name.
 The speaker in every line is always the council member, never ${personaName}.
 Let council members react to what the other council members just said when it fits: agree, disagree, pile on, tease each other, answer each other, or continue a running joke. The chatroom should feel like an actual live back-and-forth, not isolated standalone comments.
-You will receive prior chatroom turns as normal user/assistant conversation history. Consecutive council replies may be grouped into a single assistant turn separated by "---". Treat those grouped assistant turns as consecutive council chat messages from the same prior response burst.
+You will receive prior chatroom turns as explicit alternating user/assistant conversation history. Consecutive council replies may be grouped into a single assistant turn separated by "---". Treat those grouped assistant turns as consecutive council chat messages from the same prior response burst.
 
 COUNCIL MEMBERS:
 ${councilContext}
@@ -260,6 +273,7 @@ MemberName (Username): The message content
       };
       chatroomHistory.push(uiMsg);
       await saveChatroomHistory(chatId, chatroomHistory);
+      generatedResponseCount++;
       spindle.sendToFrontend({
         type: "new_message",
         name: uiMsg.name,
@@ -300,10 +314,10 @@ MemberName (Username): The message content
     setTypingSpeaker(null);
     await flushChunk(streamBuffer);
     spindle.log.info("Successfully dispatched messages to frontend.");
-    spindle.sendToFrontend({ type: "generation_ended" }, userId);
+    spindle.sendToFrontend({ type: "generation_ended", failed: false, responseCount: generatedResponseCount }, userId);
   } catch (e) {
     spindle.log.error(`Generation error: ${e.message || String(e)}`);
-    spindle.sendToFrontend({ type: "generation_ended" }, userId);
+    spindle.sendToFrontend({ type: "generation_ended", failed: true, responseCount: generatedResponseCount }, userId);
     spindle.sendToFrontend({ type: "error", message: e.message || String(e) }, userId);
   } finally {
     state.isGenerating = false;
@@ -483,6 +497,10 @@ spindle.onFrontendMessage(async (payload, userId) => {
     return;
   }
   if (payload.type === "trigger_generation") {
+    await runCouncilGeneration(userId);
+    return;
+  }
+  if (payload.type === "retry_last_user_message") {
     await runCouncilGeneration(userId);
     return;
   }
