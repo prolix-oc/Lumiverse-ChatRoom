@@ -787,7 +787,7 @@ function setup(ctx) {
   const loadingIndicator = document.createElement("div");
   loadingIndicator.className = "chatroom-msg";
   loadingIndicator.style.cssText = `
-    display:none;padding:10px 16px;align-items:center;gap:8px;
+    display:none;padding:10px 16px;align-items:center;gap:8px;margin-top:8px;
     font-size:12px;color:var(--lumiverse-text-dim);font-style:italic;
   `;
   loadingIndicator.innerHTML = `
@@ -828,6 +828,19 @@ function setup(ctx) {
   }
   function setTypingIndicator(speakerName) {
     loadingIndicatorLabel.textContent = speakerName?.trim() ? `${speakerName.trim()} is typing…` : "Council is typing…";
+  }
+  function isTypingIndicatorShown() {
+    return loadingIndicator.style.display !== "none";
+  }
+  function pinTypingIndicator() {
+    if (loadingIndicator.parentElement !== messageList || messageList.lastElementChild !== loadingIndicator) {
+      messageList.appendChild(loadingIndicator);
+    }
+  }
+  function scrollToLatest(behavior = "smooth") {
+    pinTypingIndicator();
+    const target = isTypingIndicatorShown() ? loadingIndicator : bottomSpacer;
+    target.scrollIntoView({ block: "end", behavior });
   }
   function createMessageElement(index) {
     const msg = allMessages[index];
@@ -985,7 +998,7 @@ function setup(ctx) {
     }
     virtualRange = { start: startIdx, end: endIdx };
     if (shouldScrollToBottom) {
-      messageList.scrollTo({ top: messageList.scrollHeight, behavior: "smooth" });
+      scrollToLatest("smooth");
     }
   }
   let scrollRaf = null;
@@ -1398,10 +1411,12 @@ function setup(ctx) {
       genButton.style.opacity = "0.5";
       setTypingIndicator();
       loadingIndicator.style.display = "flex";
-      messageList.appendChild(loadingIndicator);
-      messageList.scrollTo({ top: messageList.scrollHeight, behavior: "smooth" });
+      scrollToLatest("smooth");
     } else if (payload.type === "typing_status") {
       setTypingIndicator(payload.speakerName);
+      if (isStickToBottom) {
+        scrollToLatest("smooth");
+      }
     } else if (payload.type === "generation_ended") {
       isGenerating = false;
       genButton.disabled = false;

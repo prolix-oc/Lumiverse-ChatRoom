@@ -191,8 +191,10 @@ async function runCouncilGeneration(userId?: string) {
     const systemPrompt = `You are running a live internet shitposting chatroom for the "council members" who are watching a story unfold.
 They are watching the main story chat and reacting to it in real-time.
 They talk casually, use internet slang, bicker with each other, quote each other, and gossip about the characters or the author.
-This is ${personaName}'s chatroom. When council members talk about ${personaName}'s actions, choices, feelings, or situation, phrase that from ${personaName}'s point of view using first-person pronouns like "I", "me", and "my" instead of third-person references.
-When speaking directly to ${personaName}, address them as "you" or by name.
+This is a group chat environment that includes ${personaName}. Council members are reacting to ${personaName}; they are not speaking for ${personaName}, narrating as ${personaName}, or writing ${personaName}'s dialogue.
+When referring to ${personaName}'s thoughts, feelings, actions, choices, or situation, frame those references around ${personaName}'s own point of view with first-person language such as "I", "me", and "my" where appropriate, rather than treating ${personaName} like a distant third party.
+When addressing ${personaName} directly, use second-person language like "you", "your", and "yours", or use ${personaName}'s name.
+The speaker in every line is always the council member, never ${personaName}.
 Let council members react to what the other council members just said when it fits: agree, disagree, pile on, tease each other, answer each other, or continue a running joke. The chatroom should feel like an actual live back-and-forth, not isolated standalone comments.
 
 COUNCIL MEMBERS:
