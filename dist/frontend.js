@@ -1400,6 +1400,7 @@ function setup(ctx) {
     if (typeof sizedWidget.isFullscreen === "function") {
       isFullscreen = sizedWidget.isFullscreen();
     }
+    syncHeaderSafeAreaPadding();
     return isFullscreen;
   }
   function setWidgetSize(width, height) {
@@ -1542,6 +1543,14 @@ function setup(ctx) {
     flex-shrink:0;cursor:grab;user-select:none;
     position:relative;
   `;
+  function syncHeaderSafeAreaPadding() {
+    const useSafeAreaInsets = isFullscreen && isMobile;
+    header.style.paddingTop = useSafeAreaInsets ? "calc(14px + env(safe-area-inset-top, 0px))" : "14px";
+    header.style.paddingRight = useSafeAreaInsets ? "calc(18px + env(safe-area-inset-right, 0px))" : "18px";
+    header.style.paddingBottom = "14px";
+    header.style.paddingLeft = useSafeAreaInsets ? "calc(18px + env(safe-area-inset-left, 0px))" : "18px";
+  }
+  syncHeaderSafeAreaPadding();
   const headerLeft = document.createElement("div");
   headerLeft.style.cssText = "display:flex;align-items:center;gap:10px;flex:1;min-width:0;";
   const headerIcon = document.createElement("div");
@@ -2276,6 +2285,7 @@ function setup(ctx) {
         setWidgetSize(preFullscreenState.w, preFullscreenState.h);
       }
       shell.style.removeProperty("border-radius");
+      syncHeaderSafeAreaPadding();
       updateCollapse();
       fsBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>`;
       fsBtn.title = "Fullscreen";
@@ -2300,6 +2310,7 @@ function setup(ctx) {
       shell.style.setProperty("width", "100%", "important");
       shell.style.setProperty("height", "100%", "important");
       shell.style.setProperty("border-radius", "0", "important");
+      syncHeaderSafeAreaPadding();
       updateCollapse();
       fsBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3"/></svg>`;
       fsBtn.title = "Exit Fullscreen";
@@ -2307,6 +2318,7 @@ function setup(ctx) {
   });
   hideBtn.addEventListener("click", () => setWidgetVisible(false));
   window.addEventListener("resize", () => {
+    syncHeaderSafeAreaPadding();
     if (isFullscreen && !supportsNativeFullscreen) {
       shell.style.setProperty("width", window.innerWidth + "px", "important");
       shell.style.setProperty("height", window.innerHeight + "px", "important");
