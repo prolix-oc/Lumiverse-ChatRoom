@@ -784,32 +784,15 @@ function setup(ctx) {
     flex:1;overflow-y:auto;overflow-x:hidden;
     padding:16px;display:flex;flex-direction:column;gap:2px;min-height:0;
   `;
-  const loadingIndicator = document.createElement("div");
-  loadingIndicator.className = "chatroom-msg";
-  loadingIndicator.style.cssText = `
-    display:none;padding:10px 16px;align-items:center;gap:8px;margin-top:8px;
-    font-size:12px;color:var(--lumiverse-text-dim);font-style:italic;
-  `;
-  loadingIndicator.innerHTML = `
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="animation:spin 1.5s linear infinite;flex-shrink:0;">
-      <line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/>
-      <line x1="4.93" y1="4.93" x2="7.76" y2="7.76"/><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"/>
-      <line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/>
-      <line x1="4.93" y1="19.07" x2="7.76" y2="16.24"/><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"/>
-    </svg>
-    <span class="chatroom-typing-label">Council is typing…</span>
-  `;
-  const loadingIndicatorLabel = loadingIndicator.querySelector(".chatroom-typing-label");
-  messageList.appendChild(loadingIndicator);
   const topSpacer = document.createElement("div");
   topSpacer.style.cssText = "flex-shrink:0;";
   const virtualContent = document.createElement("div");
   virtualContent.style.cssText = "display:flex;flex-direction:column;gap:2px;min-height:0;";
   const bottomSpacer = document.createElement("div");
   bottomSpacer.style.cssText = "flex-shrink:0;";
-  messageList.insertBefore(topSpacer, loadingIndicator);
-  messageList.insertBefore(virtualContent, loadingIndicator);
-  messageList.insertBefore(bottomSpacer, loadingIndicator);
+  messageList.appendChild(topSpacer);
+  messageList.appendChild(virtualContent);
+  messageList.appendChild(bottomSpacer);
   body.appendChild(messageList);
   let allMessages = [];
   const msgHeightCache = new Map;
@@ -819,6 +802,8 @@ function setup(ctx) {
   let isStickToBottom = true;
   let pendingUserRetryCandidateIndex = null;
   let currentGenerationRetryCandidateIndex = null;
+  let typingPlaceholderVisible = false;
+  let typingPlaceholderSpeakerName = null;
   function isGroupedAt(index) {
     if (index <= 0)
       return false;
@@ -828,21 +813,33 @@ function setup(ctx) {
     const prevId = prev.isUser ? "__user__" : prev.name;
     return currId === prevId;
   }
-  function setTypingIndicator(speakerName) {
-    loadingIndicatorLabel.textContent = speakerName?.trim() ? `${speakerName.trim()} is typing…` : "Council is typing…";
+  function getTypingIndicatorLabel() {
+    return typingPlaceholderSpeakerName?.trim() ? `${typingPlaceholderSpeakerName.trim()} is typing…` : "Council is typing…";
   }
-  function isTypingIndicatorShown() {
-    return loadingIndicator.style.display !== "none";
+  function getVirtualItemCount() {
+    return allMessages.length + (typingPlaceholderVisible ? 1 : 0);
   }
-  function pinTypingIndicator() {
-    if (loadingIndicator.parentElement !== messageList || messageList.lastElementChild !== loadingIndicator) {
-      messageList.appendChild(loadingIndicator);
+  function isTypingPlaceholderIndex(index) {
+    return typingPlaceholderVisible && index === allMessages.length;
+  }
+  function getVirtualItemKey(index) {
+    return isTypingPlaceholderIndex(index) ? "__typing__" : `m:${index}`;
+  }
+  function setTypingPlaceholder(speakerName, visible, shouldScrollToBottom = false) {
+    const normalizedSpeaker = speakerName?.trim() ? speakerName.trim() : null;
+    const changed = typingPlaceholderVisible !== visible || typingPlaceholderSpeakerName !== normalizedSpeaker;
+    typingPlaceholderVisible = visible;
+    typingPlaceholderSpeakerName = normalizedSpeaker;
+    if (changed) {
+      rerenderMessages(shouldScrollToBottom);
+    } else if (shouldScrollToBottom) {
+      scrollToLatest("smooth");
     }
   }
   function scrollToLatest(behavior = "smooth") {
-    pinTypingIndicator();
-    const target = isTypingIndicatorShown() ? loadingIndicator : bottomSpacer;
-    target.scrollIntoView({ block: "end", behavior });
+    const lastIndex = getVirtualItemCount() - 1;
+    const target = lastIndex >= 0 ? virtualContent.querySelector(`[data-vindex="${lastIndex}"]`) : null;
+    (target || bottomSpacer).scrollIntoView({ block: "end", behavior });
   }
   function rerenderMessages(shouldScrollToBottom = false) {
     virtualContent.innerHTML = "";
@@ -866,6 +863,56 @@ function setup(ctx) {
       return;
     allMessages[index].canRetry = true;
     rerenderMessages(false);
+  }
+  function isTypingPlaceholderGrouped() {
+    if (!typingPlaceholderVisible || !typingPlaceholderSpeakerName || allMessages.length === 0)
+      return false;
+    const prev = allMessages[allMessages.length - 1];
+    return !prev.isUser && prev.name === typingPlaceholderSpeakerName;
+  }
+  function createTypingPlaceholderElement() {
+    const isGrouped = isTypingPlaceholderGrouped();
+    const speakerName = typingPlaceholderSpeakerName || "Council";
+    const wrap = document.createElement("div");
+    wrap.className = "chatroom-msg";
+    wrap.style.cssText = `
+      display:flex;gap:10px;align-items:flex-start;max-width:85%;
+      align-self:flex-start;
+      ${isGrouped ? "margin-top:2px;" : "margin-top:12px;"}
+    `;
+    const avatarWrap = document.createElement("div");
+    avatarWrap.style.cssText = `flex-shrink:0;width:32px;height:32px;${isGrouped ? "visibility:hidden;" : ""}`;
+    const initial = speakerName.charAt(0).toUpperCase() || "C";
+    avatarWrap.innerHTML = `<div style="width:32px;height:32px;border-radius:50%;background:${memberColor(speakerName)};display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:white;">${initial}</div>`;
+    wrap.appendChild(avatarWrap);
+    const col = document.createElement("div");
+    col.style.cssText = "display:flex;flex-direction:column;gap:2px;min-width:0;align-items:flex-start;";
+    if (!isGrouped) {
+      const nameEl = document.createElement("div");
+      nameEl.style.cssText = "font-size:11px;font-weight:700;padding:0 6px;";
+      nameEl.style.color = memberColor(speakerName);
+      nameEl.textContent = speakerName;
+      col.appendChild(nameEl);
+    }
+    const bubble = document.createElement("div");
+    bubble.style.cssText = `
+      padding:10px 14px;border-radius:18px;border-bottom-left-radius:4px;
+      font-size:12.5px;line-height:1.45;word-break:break-word;
+      background:var(--lumiverse-fill-subtle);color:var(--lumiverse-text-dim);
+      display:flex;align-items:center;gap:8px;font-style:italic;
+    `;
+    bubble.innerHTML = `
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="animation:spin 1.5s linear infinite;flex-shrink:0;">
+        <line x1="12" y1="2" x2="12" y2="6"></line><line x1="12" y1="18" x2="12" y2="22"></line>
+        <line x1="4.93" y1="4.93" x2="7.76" y2="7.76"></line><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"></line>
+        <line x1="2" y1="12" x2="6" y2="12"></line><line x1="18" y1="12" x2="22" y2="12"></line>
+        <line x1="4.93" y1="19.07" x2="7.76" y2="16.24"></line><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"></line>
+      </svg>
+      <span>${getTypingIndicatorLabel()}</span>
+    `;
+    col.appendChild(bubble);
+    wrap.appendChild(col);
+    return wrap;
   }
   function createMessageElement(index) {
     const msg = allMessages[index];
@@ -969,7 +1016,8 @@ function setup(ctx) {
     return wrap;
   }
   function syncVirtualWindow(shouldScrollToBottom = false) {
-    if (allMessages.length === 0) {
+    const itemCount = getVirtualItemCount();
+    if (itemCount === 0) {
       topSpacer.style.height = "0px";
       bottomSpacer.style.height = "0px";
       virtualContent.innerHTML = "";
@@ -978,32 +1026,38 @@ function setup(ctx) {
     }
     const scrollTop = messageList.scrollTop;
     const viewportHeight = messageList.clientHeight;
-    let accumulated = 0;
     let startIdx = 0;
-    for (let i = 0;i < allMessages.length; i++) {
-      const h = msgHeightCache.get(i) || ESTIMATED_MSG_HEIGHT;
-      if (accumulated + h > scrollTop - VIRTUAL_OVERSCAN * ESTIMATED_MSG_HEIGHT) {
-        startIdx = i;
-        break;
+    let endIdx = itemCount - 1;
+    if (shouldScrollToBottom) {
+      const estimatedVisibleItems = Math.ceil(viewportHeight / ESTIMATED_MSG_HEIGHT);
+      startIdx = Math.max(0, itemCount - estimatedVisibleItems - VIRTUAL_OVERSCAN);
+    } else {
+      let accumulated = 0;
+      for (let i = 0;i < itemCount; i++) {
+        const h = msgHeightCache.get(getVirtualItemKey(i)) || ESTIMATED_MSG_HEIGHT;
+        if (accumulated + h > scrollTop - VIRTUAL_OVERSCAN * ESTIMATED_MSG_HEIGHT) {
+          startIdx = i;
+          break;
+        }
+        accumulated += h;
       }
-      accumulated += h;
-    }
-    let visibleH = 0;
-    let endIdx = startIdx;
-    for (let i = startIdx;i < allMessages.length; i++) {
-      const h = msgHeightCache.get(i) || ESTIMATED_MSG_HEIGHT;
-      visibleH += h;
-      endIdx = i;
-      if (visibleH > viewportHeight + VIRTUAL_OVERSCAN * ESTIMATED_MSG_HEIGHT)
-        break;
+      let visibleH = 0;
+      endIdx = startIdx;
+      for (let i = startIdx;i < itemCount; i++) {
+        const h = msgHeightCache.get(getVirtualItemKey(i)) || ESTIMATED_MSG_HEIGHT;
+        visibleH += h;
+        endIdx = i;
+        if (visibleH > viewportHeight + VIRTUAL_OVERSCAN * ESTIMATED_MSG_HEIGHT)
+          break;
+      }
     }
     let topHeight = 0;
     for (let i = 0;i < startIdx; i++) {
-      topHeight += msgHeightCache.get(i) || ESTIMATED_MSG_HEIGHT;
+      topHeight += msgHeightCache.get(getVirtualItemKey(i)) || ESTIMATED_MSG_HEIGHT;
     }
     let bottomHeight = 0;
-    for (let i = endIdx + 1;i < allMessages.length; i++) {
-      bottomHeight += msgHeightCache.get(i) || ESTIMATED_MSG_HEIGHT;
+    for (let i = endIdx + 1;i < itemCount; i++) {
+      bottomHeight += msgHeightCache.get(getVirtualItemKey(i)) || ESTIMATED_MSG_HEIGHT;
     }
     topSpacer.style.height = topHeight + "px";
     bottomSpacer.style.height = bottomHeight + "px";
@@ -1020,8 +1074,9 @@ function setup(ctx) {
     }
     for (let i = startIdx;i <= endIdx; i++) {
       if (!existing.has(i)) {
-        const el = createMessageElement(i);
+        const el = isTypingPlaceholderIndex(i) ? createTypingPlaceholderElement() : createMessageElement(i);
         el.dataset.vindex = String(i);
+        el.dataset.vkey = getVirtualItemKey(i);
         let inserted = false;
         for (const child of Array.from(virtualContent.children)) {
           const childIdx = parseInt(child.dataset.vindex || "999999", 10);
@@ -1039,7 +1094,8 @@ function setup(ctx) {
     for (const child of Array.from(virtualContent.children)) {
       const idx = parseInt(child.dataset.vindex || "-1", 10);
       if (idx >= startIdx && idx <= endIdx) {
-        msgHeightCache.set(idx, child.offsetHeight);
+        const key = child.dataset.vkey || getVirtualItemKey(idx);
+        msgHeightCache.set(key, child.offsetHeight);
       }
     }
     virtualRange = { start: startIdx, end: endIdx };
@@ -1350,6 +1406,9 @@ function setup(ctx) {
     ctx.sendToBackend({ type: "trigger_generation" });
   });
   function appendMessage(name, username, content, avatarUrl, isUser = false) {
+    if (!isUser && typingPlaceholderVisible) {
+      setTypingPlaceholder(null, false, false);
+    }
     allMessages.push({
       name,
       username,
@@ -1381,6 +1440,8 @@ function setup(ctx) {
     unreadCount = 0;
     pendingUserRetryCandidateIndex = null;
     currentGenerationRetryCandidateIndex = null;
+    typingPlaceholderVisible = false;
+    typingPlaceholderSpeakerName = null;
     syncVirtualWindow(false);
   }
   function loadHistory(history) {
@@ -1400,6 +1461,8 @@ function setup(ctx) {
     lastSenderId = allMessages.length > 0 ? allMessages[allMessages.length - 1].isUser ? "__user__" : allMessages[allMessages.length - 1].name : null;
     pendingUserRetryCandidateIndex = allMessages.length > 0 && allMessages[allMessages.length - 1].isUser ? allMessages.length - 1 : null;
     currentGenerationRetryCandidateIndex = null;
+    typingPlaceholderVisible = false;
+    typingPlaceholderSpeakerName = null;
     isStickToBottom = true;
     messageList.scrollTop = 99999999;
     syncVirtualWindow(false);
@@ -1486,20 +1549,14 @@ function setup(ctx) {
       genButton.style.opacity = "0.5";
       clearRetryFlags(false);
       currentGenerationRetryCandidateIndex = pendingUserRetryCandidateIndex;
-      setTypingIndicator();
-      loadingIndicator.style.display = "flex";
-      scrollToLatest("smooth");
+      setTypingPlaceholder(null, true, true);
     } else if (payload.type === "typing_status") {
-      setTypingIndicator(payload.speakerName);
-      if (isStickToBottom) {
-        scrollToLatest("smooth");
-      }
+      setTypingPlaceholder(payload.speakerName || null, Boolean(payload.speakerName), isStickToBottom);
     } else if (payload.type === "generation_ended") {
       isGenerating = false;
       genButton.disabled = false;
       genButton.style.opacity = "1";
-      setTypingIndicator();
-      loadingIndicator.style.display = "none";
+      setTypingPlaceholder(null, false, false);
       const retryIndex = currentGenerationRetryCandidateIndex ?? pendingUserRetryCandidateIndex;
       if (payload.failed && (payload.responseCount ?? 0) === 0 && retryIndex != null) {
         setRetryFlag(retryIndex);
