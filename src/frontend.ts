@@ -1032,6 +1032,27 @@ export function setup(ctx: SpindleFrontendContext) {
     return isTypingPlaceholderIndex(index) ? '__typing__' : `m:${index}`;
   }
 
+  function getVirtualItemSignature(index: number) {
+    if (isTypingPlaceholderIndex(index)) {
+      return [
+        'typing',
+        typingPlaceholderSpeakerName || '',
+        isTypingPlaceholderGrouped() ? 'grouped' : 'solo',
+      ].join('|');
+    }
+
+    const msg = allMessages[index];
+    return [
+      msg.isUser ? 'user' : 'assistant',
+      msg.name,
+      msg.username,
+      msg.content,
+      msg.avatarUrl || '',
+      msg.canRetry ? 'retry' : 'noretry',
+      isGroupedAt(index) ? 'grouped' : 'solo',
+    ].join('|');
+  }
+
   function setTypingPlaceholder(speakerName: string | null, visible: boolean, shouldScrollToBottom = false) {
     const normalizedSpeaker = speakerName?.trim() ? speakerName.trim() : null;
     const changed = typingPlaceholderVisible !== visible || typingPlaceholderSpeakerName !== normalizedSpeaker;
@@ -1322,6 +1343,20 @@ export function setup(ctx: SpindleFrontendContext) {
     for (const [idx, el] of existing) {
       if (idx < startIdx || idx > endIdx) {
         virtualContent.removeChild(el);
+        existing.delete(idx);
+      }
+    }
+
+    // Recreate rows whose identity or render shape changed.
+    for (let i = startIdx; i <= endIdx; i++) {
+      const existingEl = existing.get(i);
+      if (!existingEl) continue;
+
+      const expectedKey = getVirtualItemKey(i);
+      const expectedSignature = getVirtualItemSignature(i);
+      if (existingEl.dataset.vkey !== expectedKey || existingEl.dataset.vsig !== expectedSignature) {
+        virtualContent.removeChild(existingEl);
+        existing.delete(i);
       }
     }
 
@@ -1331,6 +1366,7 @@ export function setup(ctx: SpindleFrontendContext) {
         const el = isTypingPlaceholderIndex(i) ? createTypingPlaceholderElement() : createMessageElement(i);
         el.dataset.vindex = String(i);
         el.dataset.vkey = getVirtualItemKey(i);
+        el.dataset.vsig = getVirtualItemSignature(i);
         let inserted = false;
         for (const child of Array.from(virtualContent.children)) {
           const childIdx = parseInt((child as HTMLElement).dataset.vindex || '999999', 10);
@@ -1707,7 +1743,11 @@ export function setup(ctx: SpindleFrontendContext) {
       clearRetryFlags(false);
     }
 
-    const shouldScroll = isStickToBottom;
+    if (isUser) {
+      isStickToBottom = true;
+    }
+
+    const shouldScroll = isUser || isStickToBottom;
     syncVirtualWindow(shouldScroll);
 
     if (isCollapsed) {
