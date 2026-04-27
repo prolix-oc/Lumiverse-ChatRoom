@@ -607,6 +607,13 @@ export function setup(ctx: SpindleFrontendContext) {
     return el;
   }
   const hostWrapper = getHostWrapper();
+  const sizedWidget = widget as typeof widget & { setSize?: (width: number, height: number) => void };
+
+  function setWidgetSize(width: number, height: number) {
+    shell.style.setProperty('width', width + 'px', 'important');
+    shell.style.setProperty('height', height + 'px', 'important');
+    sizedWidget.setSize?.(width, height);
+  }
 
   // Apply our chrome to the host wrapper, and make widget.root fill it.
   widget.root.style.cssText = `
@@ -644,8 +651,7 @@ export function setup(ctx: SpindleFrontendContext) {
       if (w < 50 || h < 50) {
         const defaultW = isMobile ? Math.min(380, window.innerWidth - 16) : 440;
         const defaultH = isMobile ? Math.min(540, window.innerHeight - 80) : 620;
-        shell.style.setProperty('width', defaultW + 'px', 'important');
-        shell.style.setProperty('height', (isCollapsed ? header.offsetHeight : defaultH) + 'px', 'important');
+        setWidgetSize(defaultW, isCollapsed ? header.offsetHeight : defaultH);
         if (!isCollapsed) expandedHeight = defaultH;
         syncHostWrapperSize();
       }
@@ -669,8 +675,7 @@ export function setup(ctx: SpindleFrontendContext) {
       if (w < 50 || h < 50) {
         const defaultW = isMobile ? Math.min(380, window.innerWidth - 16) : 440;
         const defaultH = isMobile ? Math.min(540, window.innerHeight - 80) : 620;
-        shell.style.setProperty('width', defaultW + 'px', 'important');
-        shell.style.setProperty('height', (isCollapsed ? header.offsetHeight : defaultH) + 'px', 'important');
+        setWidgetSize(defaultW, isCollapsed ? header.offsetHeight : defaultH);
         if (!isCollapsed) expandedHeight = defaultH;
         syncHostWrapperSize();
       }
@@ -682,12 +687,13 @@ export function setup(ctx: SpindleFrontendContext) {
   function persistWidgetState() {
     if (isMobile) return;
     const pos = widget.getPosition();
+    const persistedHeight = isCollapsed ? expandedHeight : shell.offsetHeight;
     ctx.sendToBackend({
       type: 'save_widget_state',
       x: pos.x,
       y: pos.y,
       w: shell.offsetWidth,
-      h: shell.offsetHeight,
+      h: persistedHeight,
     });
   }
 
@@ -1156,9 +1162,9 @@ export function setup(ctx: SpindleFrontendContext) {
     if (!isResizing) return;
     const nw = Math.max(WIDGET_MIN_W, Math.min(WIDGET_MAX_W, resizeStart.w + (e.clientX - resizeStart.x)));
     const nh = Math.max(WIDGET_MIN_H, Math.min(WIDGET_MAX_H, resizeStart.h + (e.clientY - resizeStart.y)));
-    shell.style.setProperty('width', nw + 'px', 'important');
-    shell.style.setProperty('height', nh + 'px', 'important');
-    if (isCollapsed) { isCollapsed = false; updateCollapse(); }
+      shell.style.setProperty('width', nw + 'px', 'important');
+      shell.style.setProperty('height', nh + 'px', 'important');
+      if (isCollapsed) { isCollapsed = false; updateCollapse(); }
     if (rafId) cancelAnimationFrame(rafId);
     rafId = requestAnimationFrame(() => {
       widget.moveTo(resizeAnchor.x, resizeAnchor.y);
@@ -1172,6 +1178,7 @@ export function setup(ctx: SpindleFrontendContext) {
     document.body.style.cursor = '';
     if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
     try { resizeHandle.releasePointerCapture(e.pointerId); } catch (_) {}
+    sizedWidget.setSize?.(shell.offsetWidth, shell.offsetHeight);
     syncHostWrapperSize();
     persistWidgetState();
   }
@@ -1205,7 +1212,7 @@ export function setup(ctx: SpindleFrontendContext) {
       body.style.display = 'none';
       collapseBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>`;
       collapseBtn.title = 'Expand';
-      shell.style.setProperty('height', header.offsetHeight + 'px', 'important');
+      setWidgetSize(shell.offsetWidth, header.offsetHeight);
       syncHostWrapperSize();
       if (unreadCount > 0) {
         badge.textContent = unreadCount > 99 ? '99+' : String(unreadCount);
@@ -1215,7 +1222,7 @@ export function setup(ctx: SpindleFrontendContext) {
       body.style.display = 'flex';
       collapseBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>`;
       collapseBtn.title = 'Collapse';
-      if (!isFullscreen) shell.style.setProperty('height', expandedHeight + 'px', 'important');
+      if (!isFullscreen) setWidgetSize(shell.offsetWidth, expandedHeight);
       syncHostWrapperSize();
       badge.style.display = 'none';
       unreadCount = 0;
@@ -1251,8 +1258,7 @@ export function setup(ctx: SpindleFrontendContext) {
         }
       }
       if (preFullscreenState) {
-        shell.style.setProperty('width', preFullscreenState.w + 'px', 'important');
-        shell.style.setProperty('height', preFullscreenState.h + 'px', 'important');
+        setWidgetSize(preFullscreenState.w, preFullscreenState.h);
       }
       shell.style.removeProperty('border-radius');
       updateCollapse();
@@ -1466,8 +1472,7 @@ export function setup(ctx: SpindleFrontendContext) {
         widget.moveTo(payload.widgetX, payload.widgetY);
       }
       if (!isMobile && payload.widgetW != null && payload.widgetH != null) {
-        shell.style.setProperty('width', payload.widgetW + 'px', 'important');
-        shell.style.setProperty('height', payload.widgetH + 'px', 'important');
+        setWidgetSize(payload.widgetW, payload.widgetH);
         expandedHeight = payload.widgetH;
         syncHostWrapperSize();
       }

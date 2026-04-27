@@ -473,6 +473,12 @@ function setup(ctx) {
     return el;
   }
   const hostWrapper = getHostWrapper();
+  const sizedWidget = widget;
+  function setWidgetSize(width, height) {
+    shell.style.setProperty("width", width + "px", "important");
+    shell.style.setProperty("height", height + "px", "important");
+    sizedWidget.setSize?.(width, height);
+  }
   widget.root.style.cssText = `
     width:100%;height:100%;
     display:flex;flex-direction:column;
@@ -503,8 +509,7 @@ function setup(ctx) {
       if (w < 50 || h < 50) {
         const defaultW = isMobile ? Math.min(380, window.innerWidth - 16) : 440;
         const defaultH = isMobile ? Math.min(540, window.innerHeight - 80) : 620;
-        shell.style.setProperty("width", defaultW + "px", "important");
-        shell.style.setProperty("height", (isCollapsed ? header.offsetHeight : defaultH) + "px", "important");
+        setWidgetSize(defaultW, isCollapsed ? header.offsetHeight : defaultH);
         if (!isCollapsed)
           expandedHeight = defaultH;
         syncHostWrapperSize();
@@ -528,8 +533,7 @@ function setup(ctx) {
       if (w < 50 || h < 50) {
         const defaultW = isMobile ? Math.min(380, window.innerWidth - 16) : 440;
         const defaultH = isMobile ? Math.min(540, window.innerHeight - 80) : 620;
-        shell.style.setProperty("width", defaultW + "px", "important");
-        shell.style.setProperty("height", (isCollapsed ? header.offsetHeight : defaultH) + "px", "important");
+        setWidgetSize(defaultW, isCollapsed ? header.offsetHeight : defaultH);
         if (!isCollapsed)
           expandedHeight = defaultH;
         syncHostWrapperSize();
@@ -541,12 +545,13 @@ function setup(ctx) {
     if (isMobile)
       return;
     const pos = widget.getPosition();
+    const persistedHeight = isCollapsed ? expandedHeight : shell.offsetHeight;
     ctx.sendToBackend({
       type: "save_widget_state",
       x: pos.x,
       y: pos.y,
       w: shell.offsetWidth,
-      h: shell.offsetHeight
+      h: persistedHeight
     });
   }
   function clampWidgetToViewport() {
@@ -961,6 +966,7 @@ function setup(ctx) {
     try {
       resizeHandle.releasePointerCapture(e.pointerId);
     } catch (_) {}
+    sizedWidget.setSize?.(shell.offsetWidth, shell.offsetHeight);
     syncHostWrapperSize();
     persistWidgetState();
   }
@@ -993,7 +999,7 @@ function setup(ctx) {
       body.style.display = "none";
       collapseBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>`;
       collapseBtn.title = "Expand";
-      shell.style.setProperty("height", header.offsetHeight + "px", "important");
+      setWidgetSize(shell.offsetWidth, header.offsetHeight);
       syncHostWrapperSize();
       if (unreadCount > 0) {
         badge.textContent = unreadCount > 99 ? "99+" : String(unreadCount);
@@ -1004,7 +1010,7 @@ function setup(ctx) {
       collapseBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>`;
       collapseBtn.title = "Collapse";
       if (!isFullscreen)
-        shell.style.setProperty("height", expandedHeight + "px", "important");
+        setWidgetSize(shell.offsetWidth, expandedHeight);
       syncHostWrapperSize();
       badge.style.display = "none";
       unreadCount = 0;
@@ -1034,8 +1040,7 @@ function setup(ctx) {
         }
       }
       if (preFullscreenState) {
-        shell.style.setProperty("width", preFullscreenState.w + "px", "important");
-        shell.style.setProperty("height", preFullscreenState.h + "px", "important");
+        setWidgetSize(preFullscreenState.w, preFullscreenState.h);
       }
       shell.style.removeProperty("border-radius");
       updateCollapse();
@@ -1226,8 +1231,7 @@ function setup(ctx) {
         widget.moveTo(payload.widgetX, payload.widgetY);
       }
       if (!isMobile && payload.widgetW != null && payload.widgetH != null) {
-        shell.style.setProperty("width", payload.widgetW + "px", "important");
-        shell.style.setProperty("height", payload.widgetH + "px", "important");
+        setWidgetSize(payload.widgetW, payload.widgetH);
         expandedHeight = payload.widgetH;
         syncHostWrapperSize();
       }
