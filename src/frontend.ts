@@ -969,7 +969,8 @@ export function setup(ctx: SpindleFrontendContext) {
   messageList.className = 'chatroom-scroll';
   messageList.style.cssText = `
     flex:1;overflow-y:auto;overflow-x:hidden;
-    min-height:0;position:relative;
+    min-height:0;position:relative;box-sizing:border-box;
+    padding:0 16px;overflow-anchor:none;
   `;
 
   // ── Virtual List Structure ──
@@ -1007,6 +1008,9 @@ export function setup(ctx: SpindleFrontendContext) {
   let ignoreScrollTrackingUntil = 0;
   let bottomScrollRaf: number | null = null;
   let pendingBottomScrollBehavior: 'auto' | 'smooth' | 'instant' | null = null;
+  let virtualRenderRaf: number | null = null;
+  let pendingRenderShouldStickToBottom = false;
+  const renderedRows = new Map<string, HTMLElement>();
 
   function isGroupedAt(index: number): boolean {
     if (index <= 0) return false;
@@ -1052,6 +1056,27 @@ export function setup(ctx: SpindleFrontendContext) {
     return `${prefix}-msg-${Date.now()}-${localMessageCounter}`;
   }
 
+  function getVirtualItemSignature(index: number) {
+    if (isTypingPlaceholderIndex(index)) {
+      return [
+        'typing',
+        typingPlaceholderSpeakerName || '',
+        isTypingPlaceholderGrouped() ? 'grouped' : 'solo',
+      ].join('|');
+    }
+
+    const msg = allMessages[index];
+    return [
+      msg.messageId,
+      msg.name,
+      msg.username,
+      msg.content,
+      msg.avatarUrl || '',
+      msg.canRetry ? 'retry' : 'noretry',
+      isGroupedAt(index) ? 'grouped' : 'solo',
+    ].join('|');
+  }
+
   function setTypingPlaceholder(speakerName: string | null, visible: boolean, shouldScrollToBottom = false) {
     const normalizedSpeaker = speakerName?.trim() ? speakerName.trim() : null;
     const changed = typingPlaceholderVisible !== visible || typingPlaceholderSpeakerName !== normalizedSpeaker;
@@ -1082,13 +1107,31 @@ export function setup(ctx: SpindleFrontendContext) {
     });
   }
 
+  function scheduleVirtualRender() {
+    if (virtualRenderRaf != null) return;
+
+    virtualRenderRaf = requestAnimationFrame(() => {
+      virtualRenderRaf = null;
+      renderVirtualItems(rowVirtualizer);
+
+      if (pendingRenderShouldStickToBottom && getVirtualItemCount() > 0) {
+        const behavior = pendingBottomScrollBehavior || 'auto';
+        pendingRenderShouldStickToBottom = false;
+        requestBottomScroll(behavior);
+      }
+    });
+  }
+
   function refreshVirtualizer(shouldScrollToBottom = false, scrollBehavior: 'auto' | 'smooth' | 'instant' = 'auto') {
     rowVirtualizer.setOptions(buildVirtualizerOptions());
     rowVirtualizer._willUpdate();
-    renderVirtualItems(rowVirtualizer);
-    if (shouldScrollToBottom || isStickToBottom) {
-      requestBottomScroll(shouldScrollToBottom ? scrollBehavior : 'auto');
+    pendingRenderShouldStickToBottom = pendingRenderShouldStickToBottom || shouldScrollToBottom || isStickToBottom;
+    if (shouldScrollToBottom) {
+      pendingBottomScrollBehavior = scrollBehavior;
+    } else if (!pendingBottomScrollBehavior && isStickToBottom) {
+      pendingBottomScrollBehavior = 'auto';
     }
+    scheduleVirtualRender();
   }
 
   function clearRetryFlags(shouldScrollToBottom = false) {
@@ -1317,9 +1360,10 @@ export function setup(ctx: SpindleFrontendContext) {
       scrollToFn: elementScroll,
       useAnimationFrameWithResizeObserver: true,
       onChange: (instance: Virtualizer<HTMLDivElement, HTMLElement>, sync: boolean) => {
-        renderVirtualItems(instance);
+        scheduleVirtualRender();
         if (!sync && isStickToBottom && getVirtualItemCount() > 0 && pendingBottomScrollBehavior == null) {
-          requestBottomScroll('auto');
+          pendingRenderShouldStickToBottom = true;
+          pendingBottomScrollBehavior = 'auto';
         }
       },
     };
@@ -1327,39 +1371,78 @@ export function setup(ctx: SpindleFrontendContext) {
 
   const rowVirtualizer = new Virtualizer<HTMLDivElement, HTMLElement>(buildVirtualizerOptions());
   const destroyVirtualizer = rowVirtualizer._didMount();
+  rowVirtualizer.shouldAdjustScrollPositionOnItemSizeChange = (item, _delta, instance) => {
+    if (isStickToBottom) return false;
+    return item.start < (instance.scrollOffset ?? 0);
+  };
   rowVirtualizer._willUpdate();
 
   function renderVirtualItems(instance: Virtualizer<HTMLDivElement, HTMLElement>) {
     const items = instance.getVirtualItems();
-    virtualContent.replaceChildren();
-    rowVirtualizer.measureElement(null);
     virtualContent.style.height = `${instance.getTotalSize()}px`;
 
     if (items.length === 0) {
+      virtualContent.replaceChildren();
+      renderedRows.clear();
+      rowVirtualizer.measureElement(null);
       return;
     }
 
-    const fragment = document.createDocumentFragment();
+    const desiredRows: HTMLElement[] = [];
     const rows: HTMLElement[] = [];
+    const activeKeys = new Set<string>();
 
     for (const item of items) {
-      const row = isTypingPlaceholderIndex(item.index)
-        ? createTypingPlaceholderElement(item.index)
-        : createMessageElement(item.index);
+      const key = String(item.key);
+      const signature = getVirtualItemSignature(item.index);
+      let row = renderedRows.get(key);
+
+      if (!row || row.dataset.vsig !== signature) {
+        row = isTypingPlaceholderIndex(item.index)
+          ? createTypingPlaceholderElement(item.index)
+          : createMessageElement(item.index);
+        renderedRows.set(key, row);
+        rows.push(row);
+      }
+
       row.setAttribute('data-index', String(item.index));
-      row.dataset.vkey = String(item.key);
+      row.dataset.vkey = key;
+      row.dataset.vsig = signature;
       row.style.position = 'absolute';
       row.style.top = '0';
       row.style.left = '0';
       row.style.width = '100%';
       row.style.transform = `translateY(${item.start}px)`;
-      fragment.appendChild(row);
-      rows.push(row);
+      desiredRows.push(row);
+      activeKeys.add(key);
     }
 
-    virtualContent.appendChild(fragment);
+    for (const [key, row] of renderedRows) {
+      if (!activeKeys.has(key)) {
+        row.remove();
+        renderedRows.delete(key);
+      }
+    }
 
-    for (const row of rows) {
+    let cursor = virtualContent.firstChild;
+    for (const row of desiredRows) {
+      if (row !== cursor) {
+        virtualContent.insertBefore(row, cursor);
+      } else {
+        cursor = cursor?.nextSibling || null;
+      }
+      cursor = row.nextSibling;
+    }
+
+    while (cursor) {
+      const next = cursor.nextSibling;
+      virtualContent.removeChild(cursor);
+      cursor = next;
+    }
+
+    rowVirtualizer.measureElement(null);
+
+    for (const row of desiredRows) {
       rowVirtualizer.measureElement(row);
       const index = Number.parseInt(row.getAttribute('data-index') || '-1', 10);
       if (index >= 0) {
@@ -1767,6 +1850,7 @@ export function setup(ctx: SpindleFrontendContext) {
     allMessages = [];
     msgHeightCache.clear();
     animatedMessageIds.clear();
+    renderedRows.clear();
     lastSenderId = null;
     unreadCount = 0;
     pendingUserRetryCandidateIndex = null;
@@ -1780,6 +1864,7 @@ export function setup(ctx: SpindleFrontendContext) {
     allMessages = [];
     msgHeightCache.clear();
     animatedMessageIds.clear();
+    renderedRows.clear();
     for (const msg of history) {
       const messageId = createLocalMessageId(msg.isUser ? 'user' : 'assistant');
       animatedMessageIds.add(messageId);
