@@ -540,6 +540,10 @@ export function setup(ctx: SpindleFrontendContext) {
   const defaultWidgetSize = getDefaultWidgetSize();
   const defaultWidgetPosition = getDefaultWidgetPosition();
 
+  function isInChatView() {
+    return /^\/chat\/[^/]+/.test(window.location.pathname);
+  }
+
   const widget = ctx.ui.createFloatWidget({
     width: defaultWidgetSize.width,
     height: defaultWidgetSize.height,
@@ -746,7 +750,9 @@ export function setup(ctx: SpindleFrontendContext) {
 
   // Start hidden until a chat is active
   let widgetVisible = false;
-  function setWidgetVisible(visible: boolean) {
+  let requestedWidgetVisible = false;
+  function applyWidgetVisibility() {
+    const visible = requestedWidgetVisible && isInChatView();
     widgetVisible = visible;
     widget.setVisible(visible);
     // Manual fallback: some host versions don't reliably restore chromeless widgets
@@ -767,7 +773,27 @@ export function setup(ctx: SpindleFrontendContext) {
       shell.style.pointerEvents = 'none';
     }
   }
+  function setWidgetVisible(visible: boolean) {
+    requestedWidgetVisible = visible;
+    applyWidgetVisibility();
+  }
   setWidgetVisible(false);
+
+  const originalPushState = window.history.pushState.bind(window.history);
+  const originalReplaceState = window.history.replaceState.bind(window.history);
+  const syncRouteVisibility = () => applyWidgetVisibility();
+  window.history.pushState = function (...args) {
+    const result = originalPushState(...args);
+    syncRouteVisibility();
+    return result;
+  };
+  window.history.replaceState = function (...args) {
+    const result = originalReplaceState(...args);
+    syncRouteVisibility();
+    return result;
+  };
+  window.addEventListener('popstate', syncRouteVisibility);
+  window.addEventListener('hashchange', syncRouteVisibility);
 
   // Auto-recover if the host squashes the shell dimensions while visible
   const shellResizeObserver = new ResizeObserver((entries) => {
@@ -1551,6 +1577,69 @@ export function setup(ctx: SpindleFrontendContext) {
   genButton.addEventListener('mouseenter', () => genButton.style.background = 'var(--lumiverse-fill-hover)');
   genButton.addEventListener('mouseleave', () => genButton.style.background = 'var(--lumiverse-fill-subtle)');
 
+  header.dataset.chatroomRegion = 'header';
+  body.dataset.chatroomRegion = 'body';
+  controls.dataset.chatroomRegion = 'controls';
+  inputField.dataset.chatroomRegion = 'input';
+  genButton.dataset.chatroomRegion = 'action';
+
+  function applyWidgetTheme() {
+    const glassEnabled = document.documentElement.hasAttribute('data-glass');
+
+    shell.style.background = glassEnabled
+      ? 'color-mix(in srgb, var(--lcs-glass-bg, var(--lumiverse-bg)) 88%, transparent)'
+      : 'var(--lumiverse-bg)';
+    shell.style.border = glassEnabled
+      ? '1px solid var(--lcs-glass-border, var(--lumiverse-border))'
+      : '1px solid var(--lumiverse-border)';
+    shell.style.boxShadow = glassEnabled
+      ? '0 18px 48px rgba(0,0,0,0.22), 0 4px 14px rgba(0,0,0,0.12), inset 0 1px 0 rgba(255,255,255,0.05)'
+      : '0 20px 60px rgba(0,0,0,0.3), 0 4px 12px rgba(0,0,0,0.15), inset 0 1px 0 rgba(255,255,255,0.05)';
+    shell.style.backdropFilter = glassEnabled ? 'blur(6px) saturate(1.03)' : 'none';
+    (shell.style as CSSStyleDeclaration & { webkitBackdropFilter?: string }).webkitBackdropFilter = glassEnabled
+      ? 'blur(6px) saturate(1.03)'
+      : 'none';
+
+    header.style.background = glassEnabled
+      ? 'linear-gradient(180deg, color-mix(in srgb, var(--lcs-glass-bg, var(--lumiverse-fill-subtle)) 78%, transparent) 0%, color-mix(in srgb, var(--lumiverse-fill, var(--lumiverse-bg-elevated)) 72%, transparent) 100%)'
+      : 'linear-gradient(180deg, var(--lumiverse-fill-subtle) 0%, var(--lumiverse-fill) 100%)';
+    header.style.borderBottomColor = glassEnabled
+      ? 'var(--lcs-glass-border, var(--lumiverse-border))'
+      : 'var(--lumiverse-border)';
+
+    body.style.background = glassEnabled
+      ? 'color-mix(in srgb, var(--lumiverse-bg) 90%, transparent)'
+      : 'transparent';
+    controls.style.background = glassEnabled
+      ? 'color-mix(in srgb, var(--lumiverse-bg) 84%, transparent)'
+      : 'var(--lumiverse-bg)';
+    controls.style.borderTopColor = glassEnabled
+      ? 'var(--lcs-glass-border, var(--lumiverse-border))'
+      : 'var(--lumiverse-border)';
+
+    inputField.style.background = glassEnabled
+      ? 'color-mix(in srgb, var(--lumiverse-fill-subtle) 82%, var(--lcs-glass-bg, transparent) 18%)'
+      : 'var(--lumiverse-fill-subtle)';
+    inputField.style.borderColor = glassEnabled
+      ? 'var(--lcs-glass-border, var(--lumiverse-border))'
+      : 'var(--lumiverse-border)';
+
+    genButton.style.background = glassEnabled
+      ? 'color-mix(in srgb, var(--lumiverse-fill-subtle) 84%, var(--lcs-glass-bg, transparent) 16%)'
+      : 'var(--lumiverse-fill-subtle)';
+    genButton.style.borderColor = glassEnabled
+      ? 'var(--lcs-glass-border, var(--lumiverse-border))'
+      : 'var(--lumiverse-border)';
+  }
+
+  applyWidgetTheme();
+
+  const rootThemeObserver = new MutationObserver(() => applyWidgetTheme());
+  rootThemeObserver.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ['data-glass', 'data-theme-mode', 'style', 'class'],
+  });
+
   toolsRow.appendChild(autoToggleLabel);
   toolsRow.appendChild(genButton);
   controls.appendChild(toolsRow);
@@ -2041,6 +2130,11 @@ export function setup(ctx: SpindleFrontendContext) {
   return () => {
     if (autoTimer) clearTimeout(autoTimer);
     window.removeEventListener('pointerdown', onWindowPointerDown, true);
+    window.removeEventListener('popstate', syncRouteVisibility);
+    window.removeEventListener('hashchange', syncRouteVisibility);
+    window.history.pushState = originalPushState;
+    window.history.replaceState = originalReplaceState;
+    rootThemeObserver.disconnect();
     shellResizeObserver.disconnect();
     destroyVirtualizer();
     unsubBackend();
