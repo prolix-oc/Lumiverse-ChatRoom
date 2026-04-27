@@ -1,10 +1,8 @@
 // src/backend.ts
 var userStates = new Map;
 var USER_SETTINGS_PATH = "settings/chatroom.json";
-var activeUserId = null;
 function getUserState(userId) {
-  const key = userId || activeUserId || "default";
-  if (!userStates.has(key)) {
+  if (!userStates.has(userId)) {
     const state = {
       autoReply: false,
       messageCounter: 0,
@@ -17,10 +15,16 @@ function getUserState(userId) {
       isGenerating: false,
       currentChatId: null
     };
-    userStates.set(key, state);
+    userStates.set(userId, state);
     return state;
   }
-  return userStates.get(key);
+  return userStates.get(userId);
+}
+function requireUserId(userId, context = "operation") {
+  if (userId)
+    return userId;
+  spindle.log.warn(`Skipping ${context} without explicit userId to preserve user isolation.`);
+  return null;
 }
 function recalcMessageTarget(state) {
   if (state.randomMessageCountEnabled) {
@@ -30,9 +34,12 @@ function recalcMessageTarget(state) {
   }
 }
 var CHATROOM_HISTORY_KEY = "council_chatroom_history";
-async function getChatroomHistory(chatId) {
+function getChatroomHistoryKey(userId) {
+  return `${CHATROOM_HISTORY_KEY}:${encodeURIComponent(userId)}`;
+}
+async function getChatroomHistory(chatId, userId) {
   try {
-    const raw = await spindle.variables.chat.get(chatId, CHATROOM_HISTORY_KEY);
+    const raw = await spindle.variables.chat.get(chatId, getChatroomHistoryKey(userId));
     if (raw) {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed))
@@ -41,8 +48,8 @@ async function getChatroomHistory(chatId) {
   } catch {}
   return [];
 }
-async function saveChatroomHistory(chatId, history) {
-  await spindle.variables.chat.set(chatId, CHATROOM_HISTORY_KEY, JSON.stringify(history));
+async function saveChatroomHistory(chatId, userId, history) {
+  await spindle.variables.chat.set(chatId, getChatroomHistoryKey(userId), JSON.stringify(history));
 }
 async function loadPersistedSettings(userId) {
   return spindle.userStorage.getJson(USER_SETTINGS_PATH, {
@@ -101,7 +108,10 @@ function toGroupedChatroomTurns(messages) {
   return turns;
 }
 async function runCouncilGeneration(userId) {
-  const state = getUserState(userId);
+  const resolvedUserId = requireUserId(userId, "generation");
+  if (!resolvedUserId)
+    return;
+  const state = getUserState(resolvedUserId);
   if (state.isGenerating)
     return;
   state.isGenerating = true;
@@ -109,21 +119,21 @@ async function runCouncilGeneration(userId) {
   spindle.log.info("Starting generation trigger processing");
   if (!spindle.permissions.has("generation")) {
     spindle.log.warn("Generation permission not granted");
-    spindle.sendToFrontend({ type: "error", message: "Generation permission not granted" }, userId);
+    spindle.sendToFrontend({ type: "error", message: "Generation permission not granted" }, resolvedUserId);
     state.isGenerating = false;
     return;
   }
   try {
     spindle.log.info("Fetching active chat...");
-    const activeChat = await spindle.chats.getActive(userId);
+    const activeChat = await spindle.chats.getActive(resolvedUserId);
     if (!activeChat) {
       spindle.log.warn("No active chat found");
-      spindle.sendToFrontend({ type: "error", message: "No active chat to monitor." }, userId);
+      spindle.sendToFrontend({ type: "error", message: "No active chat to monitor." }, resolvedUserId);
       state.isGenerating = false;
       return;
     }
     const chatId = activeChat.id;
-    const persistedSettings = await loadPersistedSettings(userId);
+    const persistedSettings = await loadPersistedSettings(resolvedUserId);
     spindle.log.info(`Active chat found: ${chatId}. Fetching messages...`);
     const contextLimit = persistedSettings.contextLimit ?? 10;
     const messages = await spindle.chat.getMessages(chatId);
@@ -133,15 +143,15 @@ async function runCouncilGeneration(userId) {
       return `${speakerName}: ${stripHtmlTags(m.content)}`;
     }).join("\\n");
     spindle.log.info("Fetching council members...");
-    const councilMembers = await spindle.council.getMembers({ userId });
+    const councilMembers = await spindle.council.getMembers({ userId: resolvedUserId });
     if (councilMembers.length === 0) {
       spindle.log.warn("No council members assigned");
-      spindle.sendToFrontend({ type: "error", message: "No council members assigned." }, userId);
+      spindle.sendToFrontend({ type: "error", message: "No council members assigned." }, resolvedUserId);
       state.isGenerating = false;
       return;
     }
     spindle.log.info("Fetching active persona...");
-    const activePersona = await spindle.personas.getActive(userId);
+    const activePersona = await spindle.personas.getActive(resolvedUserId);
     const personaName = activePersona?.name?.trim() || "the user";
     const councilContext = councilMembers.map((m) => `- ${m.name}: ${m.role}. Personality: ${m.personality}`).join("\\n");
     const memberCount = councilMembers.length;
@@ -171,7 +181,7 @@ Separate each message with "---" on a new line.
 Format each message exactly as follows:
 MemberName (Username): The message content
 `;
-    const chatroomHistory = await getChatroomHistory(chatId);
+    const chatroomHistory = await getChatroomHistory(chatId, resolvedUserId);
     const promptMessages = [
       { role: "system", content: systemPrompt },
       ...toGroupedChatroomTurns(chatroomHistory).slice(-20)
@@ -203,15 +213,15 @@ MemberName (Username): The message content
     const connId = persistedSettings.connectionId;
     let conn = null;
     if (connId) {
-      conn = await spindle.connections.get(connId, userId);
+      conn = await spindle.connections.get(connId, resolvedUserId);
     }
     if (!conn) {
-      const conns = await spindle.connections.list(userId);
+      const conns = await spindle.connections.list(resolvedUserId);
       conn = conns.find((c) => c.is_default) || conns[0];
     }
     if (!conn) {
       spindle.log.error("No connection profile available");
-      spindle.sendToFrontend({ type: "error", message: "No connection profile available." }, userId);
+      spindle.sendToFrontend({ type: "error", message: "No connection profile available." }, resolvedUserId);
       state.isGenerating = false;
       return;
     }
@@ -219,7 +229,7 @@ MemberName (Username): The message content
     const maxContextTokens = persistedSettings.maxContextTokens ?? 4096;
     if (spindle.permissions.has("generation")) {
       try {
-        let countResult = await spindle.tokens.countMessages(promptMessages, { model: conn.model, userId });
+        let countResult = await spindle.tokens.countMessages(promptMessages, { model: conn.model, userId: resolvedUserId });
         spindle.log.info(`Prompt token count: ${countResult.total_tokens} / ${maxContextTokens} (model: ${countResult.model})`);
         let trimAttempts = 0;
         const maxTrimAttempts = 100;
@@ -229,7 +239,7 @@ MemberName (Username): The message content
             break;
           promptMessages.splice(firstNonSystemIdx, 1);
           trimAttempts++;
-          countResult = await spindle.tokens.countMessages(promptMessages, { model: conn.model, userId });
+          countResult = await spindle.tokens.countMessages(promptMessages, { model: conn.model, userId: resolvedUserId });
         }
         if (trimAttempts > 0) {
           spindle.log.info(`Trimmed ${trimAttempts} chatroom history message(s) to fit within ${maxContextTokens} tokens. Final count: ${countResult.total_tokens}`);
@@ -238,12 +248,12 @@ MemberName (Username): The message content
         spindle.log.warn(`Token count failed, skipping context clipping: ${e.message || String(e)}`);
       }
     }
-    spindle.sendToFrontend({ type: "generation_started" }, userId);
+    spindle.sendToFrontend({ type: "generation_started" }, resolvedUserId);
     const stream = spindle.generate.quietStream({
       type: "quiet",
       connection_id: conn.id,
       messages: promptMessages,
-      userId
+      userId: resolvedUserId
     });
     let fullText = "";
     let streamBuffer = "";
@@ -255,7 +265,7 @@ MemberName (Username): The message content
       spindle.sendToFrontend({
         type: "typing_status",
         speakerName: speakerName || undefined
-      }, userId);
+      }, resolvedUserId);
     };
     const flushChunk = async (rawChunk) => {
       const parsed = parseChunk(rawChunk);
@@ -272,7 +282,7 @@ MemberName (Username): The message content
         ts: Date.now()
       };
       chatroomHistory.push(uiMsg);
-      await saveChatroomHistory(chatId, chatroomHistory);
+      await saveChatroomHistory(chatId, resolvedUserId, chatroomHistory);
       generatedResponseCount++;
       spindle.sendToFrontend({
         type: "new_message",
@@ -281,7 +291,7 @@ MemberName (Username): The message content
         content: uiMsg.content,
         avatarUrl: uiMsg.avatarUrl,
         isUser: uiMsg.isUser
-      }, userId);
+      }, resolvedUserId);
     };
     const consumeText = async (text) => {
       if (!text)
@@ -314,21 +324,21 @@ MemberName (Username): The message content
     setTypingSpeaker(null);
     await flushChunk(streamBuffer);
     spindle.log.info("Successfully dispatched messages to frontend.");
-    spindle.sendToFrontend({ type: "generation_ended", failed: false, responseCount: generatedResponseCount }, userId);
+    spindle.sendToFrontend({ type: "generation_ended", failed: false, responseCount: generatedResponseCount }, resolvedUserId);
   } catch (e) {
     spindle.log.error(`Generation error: ${e.message || String(e)}`);
-    spindle.sendToFrontend({ type: "generation_ended", failed: true, responseCount: generatedResponseCount }, userId);
-    spindle.sendToFrontend({ type: "error", message: e.message || String(e) }, userId);
+    spindle.sendToFrontend({ type: "generation_ended", failed: true, responseCount: generatedResponseCount }, resolvedUserId);
+    spindle.sendToFrontend({ type: "error", message: e.message || String(e) }, resolvedUserId);
   } finally {
     state.isGenerating = false;
   }
 }
 spindle.onFrontendMessage(async (payload, userId) => {
-  if (userId) {
-    activeUserId = userId;
-  }
+  const resolvedUserId = requireUserId(userId, `frontend message '${payload?.type || "unknown"}'`);
+  if (!resolvedUserId)
+    return;
   if (payload.type === "save_settings") {
-    const state = getUserState(userId);
+    const state = getUserState(resolvedUserId);
     const oldMode = state.triggerMode;
     state.triggerMode = payload.triggerMode || "time";
     state.messageCount = payload.messageCount ?? 5;
@@ -363,23 +373,23 @@ spindle.onFrontendMessage(async (payload, userId) => {
         };
       }
       return next;
-    }, userId);
-    spindle.toast.success("Chatroom configuration saved.", { userId });
+    }, resolvedUserId);
+    spindle.toast.success("Chatroom configuration saved.", { userId: resolvedUserId });
     return;
   }
   if (payload.type === "load_settings") {
-    const settings = await loadPersistedSettings(userId);
+    const settings = await loadPersistedSettings(resolvedUserId);
     let connections = [];
     try {
       if (spindle.permissions.has("generation")) {
-        connections = await spindle.connections.list(userId);
+        connections = await spindle.connections.list(resolvedUserId);
       }
     } catch (err) {
       spindle.log.warn("Could not fetch connections for chatroom overlay settings.");
     }
     let userPersona = null;
     try {
-      const persona = await spindle.personas.getActive(userId);
+      const persona = await spindle.personas.getActive(resolvedUserId);
       if (persona) {
         userPersona = {
           name: persona.name,
@@ -389,12 +399,12 @@ spindle.onFrontendMessage(async (payload, userId) => {
     } catch (e) {
       spindle.log.warn("Could not fetch active persona for chatroom.");
     }
-    const state = getUserState(userId);
+    const state = getUserState(resolvedUserId);
     state.autoReply = settings.autoReply ?? false;
     state.triggerMode = settings.triggerMode || "time";
     let activeChatId = null;
     try {
-      const activeChat = await spindle.chats.getActive(userId);
+      const activeChat = await spindle.chats.getActive(resolvedUserId);
       activeChatId = activeChat ? activeChat.id : null;
       state.currentChatId = activeChatId;
     } catch {
@@ -414,7 +424,7 @@ spindle.onFrontendMessage(async (payload, userId) => {
     if (activeChatId) {
       hasActiveChat = true;
       try {
-        history = await getChatroomHistory(activeChatId);
+        history = await getChatroomHistory(activeChatId, resolvedUserId);
       } catch (e) {
         spindle.log.warn("Could not load chatroom history.");
       }
@@ -443,7 +453,7 @@ spindle.onFrontendMessage(async (payload, userId) => {
       widgetW: settings.widgetW ?? null,
       widgetH: settings.widgetH ?? null,
       chatroomName: chatroomName || undefined
-    }, userId);
+    }, resolvedUserId);
     return;
   }
   if (payload.type === "set_auto_reply") {
@@ -451,8 +461,8 @@ spindle.onFrontendMessage(async (payload, userId) => {
     await updatePersistedSettings((settings) => ({
       ...settings,
       autoReply: enabled
-    }), userId);
-    const state = getUserState(userId);
+    }), resolvedUserId);
+    const state = getUserState(resolvedUserId);
     state.autoReply = enabled;
     return;
   }
@@ -461,7 +471,7 @@ spindle.onFrontendMessage(async (payload, userId) => {
     let personaName = "The User";
     let personaAvatar = null;
     try {
-      const activePersona = await spindle.personas.getActive(userId);
+      const activePersona = await spindle.personas.getActive(resolvedUserId);
       if (activePersona) {
         personaName = activePersona.name;
         personaAvatar = activePersona.image_id ? `/api/v1/images/${activePersona.image_id}` : null;
@@ -469,13 +479,13 @@ spindle.onFrontendMessage(async (payload, userId) => {
     } catch (e) {
       spindle.log.warn("Could not fetch active persona for user message.");
     }
-    const activeChat = await spindle.chats.getActive(userId);
+    const activeChat = await spindle.chats.getActive(resolvedUserId);
     if (!activeChat) {
-      spindle.sendToFrontend({ type: "error", message: "No active chat to send message to." }, userId);
+      spindle.sendToFrontend({ type: "error", message: "No active chat to send message to." }, resolvedUserId);
       return;
     }
     const chatId = activeChat.id;
-    const chatroomHistory = await getChatroomHistory(chatId);
+    const chatroomHistory = await getChatroomHistory(chatId, resolvedUserId);
     chatroomHistory.push({
       name: personaName,
       username: personaName,
@@ -484,7 +494,7 @@ spindle.onFrontendMessage(async (payload, userId) => {
       isUser: true,
       ts: Date.now()
     });
-    await saveChatroomHistory(chatId, chatroomHistory);
+    await saveChatroomHistory(chatId, resolvedUserId, chatroomHistory);
     spindle.sendToFrontend({
       type: "new_message",
       name: personaName,
@@ -493,31 +503,31 @@ spindle.onFrontendMessage(async (payload, userId) => {
       avatarUrl: personaAvatar,
       isUser: true,
       clientMessageId: payload.clientMessageId || undefined
-    }, userId);
-    await runCouncilGeneration(userId);
+    }, resolvedUserId);
+    await runCouncilGeneration(resolvedUserId);
     return;
   }
   if (payload.type === "trigger_generation") {
-    await runCouncilGeneration(userId);
+    await runCouncilGeneration(resolvedUserId);
     return;
   }
   if (payload.type === "retry_last_user_message") {
-    await runCouncilGeneration(userId);
+    await runCouncilGeneration(resolvedUserId);
     return;
   }
   if (payload.type === "clear_chat_history") {
     try {
-      const activeChat = await spindle.chats.getActive(userId);
+      const activeChat = await spindle.chats.getActive(resolvedUserId);
       if (!activeChat) {
-        spindle.sendToFrontend({ type: "error", message: "No active chat to clear history from." }, userId);
+        spindle.sendToFrontend({ type: "error", message: "No active chat to clear history from." }, resolvedUserId);
         return;
       }
-      await spindle.variables.chat.delete(activeChat.id, CHATROOM_HISTORY_KEY);
-      spindle.sendToFrontend({ type: "chat_changed", history: [] }, userId);
-      spindle.toast.success("Chatroom history cleared.", { userId });
+      await spindle.variables.chat.delete(activeChat.id, getChatroomHistoryKey(resolvedUserId));
+      spindle.sendToFrontend({ type: "chat_changed", history: [] }, resolvedUserId);
+      spindle.toast.success("Chatroom history cleared.", { userId: resolvedUserId });
     } catch (e) {
       spindle.log.error(`Failed to clear chatroom history: ${e.message || String(e)}`);
-      spindle.sendToFrontend({ type: "error", message: "Failed to clear chatroom history." }, userId);
+      spindle.sendToFrontend({ type: "error", message: "Failed to clear chatroom history." }, resolvedUserId);
     }
     return;
   }
@@ -528,16 +538,19 @@ spindle.onFrontendMessage(async (payload, userId) => {
       widgetY: payload.y != null ? Math.round(payload.y) : settings.widgetY,
       widgetW: payload.w != null ? Math.round(payload.w) : settings.widgetW,
       widgetH: payload.h != null ? Math.round(payload.h) : settings.widgetH
-    }), userId);
+    }), resolvedUserId);
     return;
   }
 });
 spindle.on("MESSAGE_SENT", async (payload, userId) => {
-  const state = getUserState(userId);
+  const resolvedUserId = requireUserId(userId, "MESSAGE_SENT handler");
+  if (!resolvedUserId)
+    return;
+  const state = getUserState(resolvedUserId);
   if (state.triggerMode !== "messages" || !state.autoReply)
     return;
   try {
-    const activeChat = await spindle.chats.getActive(userId);
+    const activeChat = await spindle.chats.getActive(resolvedUserId);
     const eventChatId = payload?.chatId || payload?.chat_id;
     if (!activeChat || activeChat.id !== eventChatId)
       return;
@@ -547,28 +560,31 @@ spindle.on("MESSAGE_SENT", async (payload, userId) => {
       state.messageCounter = 0;
       recalcMessageTarget(state);
       spindle.log.info("Message target reached. Triggering council generation.");
-      await runCouncilGeneration(userId);
+      await runCouncilGeneration(resolvedUserId);
     }
   } catch (e) {
     spindle.log.error(`Message trigger error: ${e.message || String(e)}`);
   }
 });
 spindle.on("SETTINGS_UPDATED", async (payload, userId) => {
-  const state = getUserState(userId);
+  const resolvedUserId = requireUserId(userId, "SETTINGS_UPDATED handler");
+  if (!resolvedUserId)
+    return;
+  const state = getUserState(resolvedUserId);
   const key = payload?.key ?? payload?.keys?.[0] ?? null;
   if (key !== "activeChatId")
     return;
   const newChatId = payload?.value ?? null;
   if (!newChatId) {
     state.currentChatId = null;
-    spindle.sendToFrontend({ type: "hide_widget" }, userId);
+    spindle.sendToFrontend({ type: "hide_widget" }, resolvedUserId);
     return;
   }
   if (state.currentChatId !== newChatId) {
     state.currentChatId = newChatId;
-    const history = await getChatroomHistory(newChatId);
-    const settings = await loadPersistedSettings(userId);
+    const history = await getChatroomHistory(newChatId, resolvedUserId);
+    const settings = await loadPersistedSettings(resolvedUserId);
     const chatroomName = settings.chatroomNames?.[newChatId];
-    spindle.sendToFrontend({ type: "chat_changed", history, chatroomName: chatroomName || undefined }, userId);
+    spindle.sendToFrontend({ type: "chat_changed", history, chatroomName: chatroomName || undefined }, resolvedUserId);
   }
 });
