@@ -9,5 +9,5 @@
   "permissions": ["generation", "ui_panels", "chats", "chat_mutation", "personas"],
   "entry_backend": "dist/backend.js",
   "entry_frontend": "dist/frontend.js",
-  "minimum_lumiverse_version": "0.1.0"
+  "minimum_lumiverse_version": "0.9.4"
 }
