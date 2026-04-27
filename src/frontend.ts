@@ -1267,12 +1267,30 @@ export function setup(ctx: SpindleFrontendContext) {
   makeInteractive(inputField);
   inputField.placeholder = 'Type a message…';
   inputField.rows = 1;
+  const INPUT_MAX_VISIBLE_LINES = 4;
   inputField.style.cssText = `
     flex:1;padding:10px 14px;border:1px solid var(--lumiverse-border);
     border-radius:18px;background:var(--lumiverse-fill-subtle);color:var(--lumiverse-text);
     font-size:${isMobile ? '16px' : '14px'};outline:none;min-width:0;resize:none;
-    font-family:inherit;line-height:1.4;max-height:100px;overflow-y:auto;
+    font-family:inherit;line-height:1.4;min-height:40px;overflow-y:hidden;
   `;
+
+  function resetInputHeight() {
+    inputField.style.height = '40px';
+    inputField.style.overflowY = 'hidden';
+  }
+
+  function adjustInputHeight() {
+    inputField.style.height = 'auto';
+    const lineHeight = parseFloat(getComputedStyle(inputField).lineHeight) || 20;
+    const verticalPadding = 20;
+    const maxHeight = Math.round(lineHeight * INPUT_MAX_VISIBLE_LINES + verticalPadding);
+    const nextHeight = Math.min(inputField.scrollHeight, maxHeight);
+    inputField.style.height = `${nextHeight}px`;
+    inputField.style.overflowY = inputField.scrollHeight > maxHeight ? 'auto' : 'hidden';
+  }
+
+  resetInputHeight();
 
   const sendButton = document.createElement('button');
   makeInteractive(sendButton);
@@ -1533,9 +1551,11 @@ export function setup(ctx: SpindleFrontendContext) {
     if (!text) return;
     inputField.value = '';
     inputField.rows = 1;
+    resetInputHeight();
     ctx.sendToBackend({ type: 'user_message', content: text });
   };
   sendButton.addEventListener('click', sendMessage);
+  inputField.addEventListener('input', adjustInputHeight);
   inputField.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
   });
