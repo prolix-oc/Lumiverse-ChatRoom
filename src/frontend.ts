@@ -647,6 +647,7 @@ export function setup(ctx: SpindleFrontendContext) {
         shell.style.setProperty('width', defaultW + 'px', 'important');
         shell.style.setProperty('height', (isCollapsed ? header.offsetHeight : defaultH) + 'px', 'important');
         if (!isCollapsed) expandedHeight = defaultH;
+        syncHostWrapperSize();
       }
     } else {
       shell.style.opacity = '0';
@@ -662,12 +663,16 @@ export function setup(ctx: SpindleFrontendContext) {
     for (const entry of entries) {
       const w = entry.contentRect.width;
       const h = entry.contentRect.height;
+      if (w > 0 && h > 0) {
+        syncHostWrapperSize();
+      }
       if (w < 50 || h < 50) {
         const defaultW = isMobile ? Math.min(380, window.innerWidth - 16) : 440;
         const defaultH = isMobile ? Math.min(540, window.innerHeight - 80) : 620;
         shell.style.setProperty('width', defaultW + 'px', 'important');
         shell.style.setProperty('height', (isCollapsed ? header.offsetHeight : defaultH) + 'px', 'important');
         if (!isCollapsed) expandedHeight = defaultH;
+        syncHostWrapperSize();
       }
     }
   });
@@ -1187,10 +1192,12 @@ export function setup(ctx: SpindleFrontendContext) {
   // ── Collapse / Fullscreen logic ──
   function syncHostWrapperSize() {
     if (isFullscreen) return;
-    const w = shell.offsetWidth;
-    const h = shell.offsetHeight;
-    if (w > 0) hostWrapper.style.setProperty('width', w + 'px', 'important');
-    if (h > 0) hostWrapper.style.setProperty('height', h + 'px', 'important');
+    const w = Math.round(shell.getBoundingClientRect().width);
+    const h = Math.round(shell.getBoundingClientRect().height);
+    const hostW = Math.round(hostWrapper.getBoundingClientRect().width);
+    const hostH = Math.round(hostWrapper.getBoundingClientRect().height);
+    if (w > 0 && hostW !== w) hostWrapper.style.setProperty('width', w + 'px', 'important');
+    if (h > 0 && hostH !== h) hostWrapper.style.setProperty('height', h + 'px', 'important');
   }
 
   function updateCollapse() {
@@ -1462,6 +1469,7 @@ export function setup(ctx: SpindleFrontendContext) {
         shell.style.setProperty('width', payload.widgetW + 'px', 'important');
         shell.style.setProperty('height', payload.widgetH + 'px', 'important');
         expandedHeight = payload.widgetH;
+        syncHostWrapperSize();
       }
     } else if (payload.type === 'hide_widget') {
       setWidgetVisible(false);

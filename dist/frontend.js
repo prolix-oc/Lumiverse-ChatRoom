@@ -507,6 +507,7 @@ function setup(ctx) {
         shell.style.setProperty("height", (isCollapsed ? header.offsetHeight : defaultH) + "px", "important");
         if (!isCollapsed)
           expandedHeight = defaultH;
+        syncHostWrapperSize();
       }
     } else {
       shell.style.opacity = "0";
@@ -521,6 +522,9 @@ function setup(ctx) {
     for (const entry of entries) {
       const w = entry.contentRect.width;
       const h = entry.contentRect.height;
+      if (w > 0 && h > 0) {
+        syncHostWrapperSize();
+      }
       if (w < 50 || h < 50) {
         const defaultW = isMobile ? Math.min(380, window.innerWidth - 16) : 440;
         const defaultH = isMobile ? Math.min(540, window.innerHeight - 80) : 620;
@@ -528,6 +532,7 @@ function setup(ctx) {
         shell.style.setProperty("height", (isCollapsed ? header.offsetHeight : defaultH) + "px", "important");
         if (!isCollapsed)
           expandedHeight = defaultH;
+        syncHostWrapperSize();
       }
     }
   });
@@ -974,11 +979,13 @@ function setup(ctx) {
   function syncHostWrapperSize() {
     if (isFullscreen)
       return;
-    const w = shell.offsetWidth;
-    const h = shell.offsetHeight;
-    if (w > 0)
+    const w = Math.round(shell.getBoundingClientRect().width);
+    const h = Math.round(shell.getBoundingClientRect().height);
+    const hostW = Math.round(hostWrapper.getBoundingClientRect().width);
+    const hostH = Math.round(hostWrapper.getBoundingClientRect().height);
+    if (w > 0 && hostW !== w)
       hostWrapper.style.setProperty("width", w + "px", "important");
-    if (h > 0)
+    if (h > 0 && hostH !== h)
       hostWrapper.style.setProperty("height", h + "px", "important");
   }
   function updateCollapse() {
@@ -1222,6 +1229,7 @@ function setup(ctx) {
         shell.style.setProperty("width", payload.widgetW + "px", "important");
         shell.style.setProperty("height", payload.widgetH + "px", "important");
         expandedHeight = payload.widgetH;
+        syncHostWrapperSize();
       }
     } else if (payload.type === "hide_widget") {
       setWidgetVisible(false);
