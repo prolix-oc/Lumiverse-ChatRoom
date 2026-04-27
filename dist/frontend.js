@@ -113,6 +113,8 @@ function setup(ctx) {
   configHeader.appendChild(configHeaderIcon);
   configHeader.appendChild(configTitle);
   configCard.appendChild(configHeader);
+  const chatroomNameInput = createStyledTextInput("Council Chatroom");
+  configCard.appendChild(createSettingRow("Chatroom Name", "A custom name for this chatroom. Saved per-chat and shown in the widget header.", chatroomNameInput));
   function createSettingRow(labelText, description, control) {
     const row = document.createElement("div");
     row.style.cssText = "display: flex; flex-direction: column; gap: 6px;";
@@ -171,6 +173,32 @@ function setup(ctx) {
       font-size: 13px;
       outline: none;
       transition: border-color .15s;
+    `;
+    inp.addEventListener("focus", () => {
+      inp.style.borderColor = "var(--lumiverse-primary)";
+    });
+    inp.addEventListener("blur", () => {
+      inp.style.borderColor = "var(--lumiverse-border)";
+    });
+    return inp;
+  }
+  function createStyledTextInput(placeholder) {
+    const inp = document.createElement("input");
+    makeInteractive(inp);
+    inp.type = "text";
+    inp.placeholder = placeholder;
+    inp.style.cssText = `
+      width: 100%;
+      max-width: 400px;
+      padding: 6px 10px;
+      border: 1px solid var(--lumiverse-border);
+      border-radius: var(--lumiverse-radius, 8px);
+      background: var(--lumiverse-fill-subtle);
+      color: var(--lumiverse-text);
+      font-size: 13px;
+      outline: none;
+      transition: border-color .15s;
+      box-sizing: border-box;
     `;
     inp.addEventListener("focus", () => {
       inp.style.borderColor = "var(--lumiverse-primary)";
@@ -331,7 +359,8 @@ function setup(ctx) {
       messageCountMax: parseInt(messageCountMaxInput.value, 10),
       contextLimit: parseInt(contextInput.value, 10),
       maxContextTokens: parseInt(maxContextTokensInput.value, 10),
-      connectionId: connectionSelect.value
+      connectionId: connectionSelect.value,
+      chatroomName: chatroomNameInput.value.trim()
     });
   });
   saveBtnWrap.appendChild(saveBtn);
@@ -927,6 +956,7 @@ function setup(ctx) {
     try {
       resizeHandle.releasePointerCapture(e.pointerId);
     } catch (_) {}
+    syncHostWrapperSize();
     persistWidgetState();
   }
   function onWindowPointerDown(e) {
@@ -941,12 +971,23 @@ function setup(ctx) {
   resizeHandle.addEventListener("pointermove", onResizePointerMove);
   resizeHandle.addEventListener("pointerup", onResizePointerUp);
   resizeHandle.addEventListener("pointercancel", onResizePointerUp);
+  function syncHostWrapperSize() {
+    if (isFullscreen)
+      return;
+    const w = shell.offsetWidth;
+    const h = shell.offsetHeight;
+    if (w > 0)
+      hostWrapper.style.setProperty("width", w + "px", "important");
+    if (h > 0)
+      hostWrapper.style.setProperty("height", h + "px", "important");
+  }
   function updateCollapse() {
     if (isCollapsed) {
       body.style.display = "none";
       collapseBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>`;
       collapseBtn.title = "Expand";
       shell.style.setProperty("height", header.offsetHeight + "px", "important");
+      syncHostWrapperSize();
       if (unreadCount > 0) {
         badge.textContent = unreadCount > 99 ? "99+" : String(unreadCount);
         badge.style.display = "block";
@@ -957,6 +998,7 @@ function setup(ctx) {
       collapseBtn.title = "Collapse";
       if (!isFullscreen)
         shell.style.setProperty("height", expandedHeight + "px", "important");
+      syncHostWrapperSize();
       badge.style.display = "none";
       unreadCount = 0;
     }
@@ -1145,6 +1187,8 @@ function setup(ctx) {
       if (payload.userPersona) {
         userPersona = payload.userPersona;
       }
+      chatroomNameInput.value = payload.chatroomName ?? "";
+      headerTitle.textContent = payload.chatroomName?.trim() || "Council Chatroom";
       autoToggle.checked = payload.autoReply ?? false;
       if (payload.autoReply && triggerMode === "time") {
         startAutoTimer();
@@ -1185,6 +1229,7 @@ function setup(ctx) {
       autoToggle.checked = false;
     } else if (payload.type === "chat_changed") {
       setWidgetVisible(true);
+      headerTitle.textContent = payload.chatroomName?.trim() || "Council Chatroom";
       if (payload.history && payload.history.length > 0) {
         loadHistory(payload.history);
       } else {

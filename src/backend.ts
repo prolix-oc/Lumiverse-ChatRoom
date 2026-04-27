@@ -328,6 +328,12 @@ spindle.onFrontendMessage(async (payload, userId) => {
       state.messageCounter = 0;
     }
 
+    // Save per-chat decorative name
+    const chatName = payload.chatroomName?.trim();
+    if (state.currentChatId && chatName) {
+      await spindle.variables.global.set(`chatroom_name_${state.currentChatId}`, chatName, userId);
+    }
+
     spindle.toast.success('Chatroom configuration saved.', { userId });
     return;
   }
@@ -380,9 +386,11 @@ spindle.onFrontendMessage(async (payload, userId) => {
     state.triggerMode = triggerMode || 'time';
 
     // Track current active chat
+    let activeChatId: string | null = null;
     try {
       const activeChat = await spindle.chats.getActive(userId);
-      state.currentChatId = activeChat ? activeChat.id : null;
+      activeChatId = activeChat ? activeChat.id : null;
+      state.currentChatId = activeChatId;
     } catch {
       state.currentChatId = null;
     }
@@ -392,17 +400,22 @@ spindle.onFrontendMessage(async (payload, userId) => {
     state.messageCountMax = messageCountMax ? parseInt(messageCountMax, 10) : 7;
     recalcMessageTarget(state);
 
+    // Load per-chat decorative name
+    let chatroomName: string | null = null;
+    if (activeChatId) {
+      chatroomName = await spindle.variables.global.get(`chatroom_name_${activeChatId}`, userId);
+    }
+
     // Load history for the active chat
     let history: CouncilMessage[] = [];
     let hasActiveChat = false;
-    try {
-      const activeChat = await spindle.chats.getActive(userId);
-      if (activeChat) {
-        hasActiveChat = true;
-        history = await getChatroomHistory(activeChat.id);
+    if (activeChatId) {
+      hasActiveChat = true;
+      try {
+        history = await getChatroomHistory(activeChatId);
+      } catch (e) {
+        spindle.log.warn('Could not load chatroom history.');
       }
-    } catch (e) {
-      spindle.log.warn('Could not load chatroom history.');
     }
 
     spindle.sendToFrontend({
@@ -428,6 +441,7 @@ spindle.onFrontendMessage(async (payload, userId) => {
       widgetY: widgetY ? parseInt(widgetY, 10) : null,
       widgetW: widgetW ? parseInt(widgetW, 10) : null,
       widgetH: widgetH ? parseInt(widgetH, 10) : null,
+      chatroomName: chatroomName || undefined,
     }, userId);
     return;
   }
@@ -565,6 +579,7 @@ spindle.on('SETTINGS_UPDATED', async (payload: any) => {
   if (state.currentChatId !== newChatId) {
     state.currentChatId = newChatId;
     const history = await getChatroomHistory(newChatId);
-    spindle.sendToFrontend({ type: 'chat_changed', history });
+    const chatroomName = await spindle.variables.global.get(`chatroom_name_${newChatId}`, userId);
+    spindle.sendToFrontend({ type: 'chat_changed', history, chatroomName: chatroomName || undefined });
   }
 });
