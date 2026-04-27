@@ -289,8 +289,8 @@ MemberName (Username): The message content
 
     spindle.sendToFrontend({ type: 'generation_started' }, userId);
 
-    const stream = spindle.generate.rawStream({
-      type: 'raw',
+    const stream = spindle.generate.quietStream({
+      type: 'quiet',
       connection_id: conn.id,
       messages: promptMessages,
       userId
