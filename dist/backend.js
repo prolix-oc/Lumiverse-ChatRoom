@@ -60,11 +60,33 @@ async function updatePersistedSettings(updater, userId) {
 function stripHtmlTags(text) {
   return text.replace(/<[^>]*>/g, "");
 }
-function toLlmHistory(messages) {
-  return messages.map((m) => ({
-    role: m.isUser ? "user" : "assistant",
-    content: `[${m.name} in Chatroom]: ${stripHtmlTags(m.content)}`
-  }));
+function toGroupedChatroomTurns(messages) {
+  const turns = [];
+  let assistantBuffer = [];
+  const flushAssistantBuffer = () => {
+    if (assistantBuffer.length === 0)
+      return;
+    turns.push({
+      role: "assistant",
+      content: assistantBuffer.map((m) => `${m.name} (${m.username || m.name}): ${stripHtmlTags(m.content)}`).join(`
+---
+`)
+    });
+    assistantBuffer = [];
+  };
+  for (const msg of messages) {
+    if (msg.isUser) {
+      flushAssistantBuffer();
+      turns.push({
+        role: "user",
+        content: `${msg.name || msg.username || "User"}: ${stripHtmlTags(msg.content)}`
+      });
+      continue;
+    }
+    assistantBuffer.push(msg);
+  }
+  flushAssistantBuffer();
+  return turns;
 }
 async function runCouncilGeneration(userId) {
   const state = getUserState(userId);
@@ -122,12 +144,11 @@ When referring to ${personaName}'s thoughts, feelings, actions, choices, or situ
 When addressing ${personaName} directly, use second-person language like "you", "your", and "yours", or use ${personaName}'s name.
 The speaker in every line is always the council member, never ${personaName}.
 Let council members react to what the other council members just said when it fits: agree, disagree, pile on, tease each other, answer each other, or continue a running joke. The chatroom should feel like an actual live back-and-forth, not isolated standalone comments.
+You will receive prior chatroom turns as normal user/assistant conversation history. Consecutive council replies may be grouped into a single assistant turn separated by "---". Treat those grouped assistant turns as consecutive council chat messages from the same prior response burst.
+You will also receive the latest story chat context as the most recent user message to react to.
 
 COUNCIL MEMBERS:
 ${councilContext}
-
-CURRENT STORY CONTEXT:
-${chatContext}
 
 ${responseInstruction}
 For each message, one council member should speak. They should pick a chat "username" for themselves based on their character, and continue to use it.
@@ -138,7 +159,12 @@ MemberName (Username): The message content
     const chatroomHistory = await getChatroomHistory(chatId);
     const promptMessages = [
       { role: "system", content: systemPrompt },
-      ...toLlmHistory(chatroomHistory).slice(-20)
+      ...toGroupedChatroomTurns(chatroomHistory).slice(-20),
+      {
+        role: "user",
+        content: `Latest story chat context to react to:
+${chatContext}`
+      }
     ];
     const parseChunk = (rawChunk) => {
       const trimmed = rawChunk.trim();
