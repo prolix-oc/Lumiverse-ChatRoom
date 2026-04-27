@@ -5,11 +5,11 @@
     "": {
       "name": "lumiverse-chatroom",
       "dependencies": {
-        "lumiverse-spindle-types": "0.4.41",
+        "lumiverse-spindle-types": "0.4.42",
       },
     },
   },
   "packages": {
-    "lumiverse-spindle-types": ["lumiverse-spindle-types@0.4.41", "", {}, "sha512-9xCF9N5xGFJ/VThszJuM5PIrNz6HxiMx0GGKAk/Y0f0epTNAn/3ZhlRFrfri4rLfGHIOLluX5Sdb85CFYh7paQ=="],
+    "lumiverse-spindle-types": ["lumiverse-spindle-types@0.4.42", "", {}, "sha512-71chZue/dY4EFobzEZZxrmYEof/RvImrxbGY0qTdMd0DhjTP3+oy37JswQlzXTS7k3WpvcBxyGCEvY3rQxUG0A=="],
   }
 }
