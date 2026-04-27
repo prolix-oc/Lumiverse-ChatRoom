@@ -876,12 +876,15 @@ export function setup(ctx: SpindleFrontendContext) {
     }
   }
 
-  shell.addEventListener('contextmenu', (e) => {
+  const handleCollapsedContextMenu = (e: Event) => {
+    const mouseEvent = e as MouseEvent;
     if (!isCollapsed) return;
-    e.preventDefault();
-    e.stopPropagation();
-    void openCollapsedContextMenu({ x: e.clientX, y: e.clientY });
-  });
+    mouseEvent.preventDefault();
+    mouseEvent.stopPropagation();
+    void openCollapsedContextMenu({ x: mouseEvent.clientX, y: mouseEvent.clientY });
+  };
+
+  hostWrapper.addEventListener('contextmenu', handleCollapsedContextMenu, true);
 
   headerActions.appendChild(fsBtn);
   headerActions.appendChild(collapseBtn);

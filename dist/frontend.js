@@ -703,13 +703,15 @@ function setup(ctx) {
       collapsedContextMenuOpen = false;
     }
   }
-  shell.addEventListener("contextmenu", (e) => {
+  const handleCollapsedContextMenu = (e) => {
+    const mouseEvent = e;
     if (!isCollapsed)
       return;
-    e.preventDefault();
-    e.stopPropagation();
-    openCollapsedContextMenu({ x: e.clientX, y: e.clientY });
-  });
+    mouseEvent.preventDefault();
+    mouseEvent.stopPropagation();
+    openCollapsedContextMenu({ x: mouseEvent.clientX, y: mouseEvent.clientY });
+  };
+  hostWrapper.addEventListener("contextmenu", handleCollapsedContextMenu, true);
   headerActions.appendChild(fsBtn);
   headerActions.appendChild(collapseBtn);
   headerActions.appendChild(hideBtn);
