@@ -491,7 +491,8 @@ spindle.onFrontendMessage(async (payload, userId) => {
       username: personaName,
       content: payload.content,
       avatarUrl: personaAvatar,
-      isUser: true
+      isUser: true,
+      clientMessageId: payload.clientMessageId || undefined
     }, userId);
     await runCouncilGeneration(userId);
     return;

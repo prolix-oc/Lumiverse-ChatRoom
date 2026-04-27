@@ -993,6 +993,7 @@ export function setup(ctx: SpindleFrontendContext) {
     isUser: boolean;
     timestamp: number;
     canRetry?: boolean;
+    clientMessageId?: string;
   }
   let allMessages: ChatMessage[] = [];
   const msgHeightCache = new Map<string, number>();
@@ -1004,6 +1005,7 @@ export function setup(ctx: SpindleFrontendContext) {
   let currentGenerationRetryCandidateIndex: number | null = null;
   let typingPlaceholderVisible = false;
   let typingPlaceholderSpeakerName: string | null = null;
+  let localUserMessageCounter = 0;
 
   function isGroupedAt(index: number): boolean {
     if (index <= 0) return false;
@@ -1032,6 +1034,11 @@ export function setup(ctx: SpindleFrontendContext) {
     return isTypingPlaceholderIndex(index) ? '__typing__' : `m:${index}`;
   }
 
+  function createLocalUserMessageId() {
+    localUserMessageCounter += 1;
+    return `local-user-${Date.now()}-${localUserMessageCounter}`;
+  }
+
   function getVirtualItemSignature(index: number) {
     if (isTypingPlaceholderIndex(index)) {
       return [
@@ -1049,6 +1056,7 @@ export function setup(ctx: SpindleFrontendContext) {
       msg.content,
       msg.avatarUrl || '',
       msg.canRetry ? 'retry' : 'noretry',
+      msg.clientMessageId || '',
       isGroupedAt(index) ? 'grouped' : 'solo',
     ].join('|');
   }
@@ -1703,10 +1711,19 @@ export function setup(ctx: SpindleFrontendContext) {
     if (isGenerating) return;
     const text = inputField.value.trim();
     if (!text) return;
+    const clientMessageId = createLocalUserMessageId();
     inputField.value = '';
     inputField.rows = 1;
     resetInputHeight();
-    ctx.sendToBackend({ type: 'user_message', content: text });
+    appendMessage(
+      userPersona?.name || 'You',
+      userPersona?.name || 'You',
+      text,
+      userPersona?.avatarUrl || null,
+      true,
+      clientMessageId,
+    );
+    ctx.sendToBackend({ type: 'user_message', content: text, clientMessageId });
   };
   sendButton.addEventListener('click', sendMessage);
   inputField.addEventListener('input', adjustInputHeight);
@@ -1720,7 +1737,7 @@ export function setup(ctx: SpindleFrontendContext) {
   });
 
   // ── Append message ──
-  function appendMessage(name: string, username: string, content: string, avatarUrl: string | null, isUser: boolean = false) {
+  function appendMessage(name: string, username: string, content: string, avatarUrl: string | null, isUser: boolean = false, clientMessageId?: string) {
     if (!isUser && typingPlaceholderVisible) {
       setTypingPlaceholder(null, false, false);
     }
@@ -1733,6 +1750,7 @@ export function setup(ctx: SpindleFrontendContext) {
       isUser,
       timestamp: Date.now(),
       canRetry: false,
+      clientMessageId,
     });
     lastSenderId = isUser ? '__user__' : name;
 
@@ -1754,6 +1772,30 @@ export function setup(ctx: SpindleFrontendContext) {
       unreadCount++;
       badge.textContent = unreadCount > 99 ? '99+' : String(unreadCount);
       badge.style.display = 'block';
+    }
+  }
+
+  function reconcileUserMessage(clientMessageId: string, name: string, username: string, content: string, avatarUrl: string | null) {
+    const index = allMessages.findIndex((msg) => msg.isUser && msg.clientMessageId === clientMessageId);
+    if (index === -1) {
+      appendMessage(name, username, content, avatarUrl, true, clientMessageId);
+      return;
+    }
+
+    const msg = allMessages[index];
+    const changed = msg.name !== name
+      || msg.username !== username
+      || msg.content !== content
+      || msg.avatarUrl !== avatarUrl;
+
+    msg.name = name;
+    msg.username = username;
+    msg.content = content;
+    msg.avatarUrl = avatarUrl;
+    msg.clientMessageId = clientMessageId;
+
+    if (changed) {
+      rerenderMessages(index === allMessages.length - 1 && isStickToBottom);
     }
   }
 
@@ -1781,6 +1823,7 @@ export function setup(ctx: SpindleFrontendContext) {
         isUser: msg.isUser,
         timestamp: msg.timestamp || Date.now(),
         canRetry: false,
+        clientMessageId: undefined,
       });
     }
     lastSenderId = allMessages.length > 0
@@ -1905,7 +1948,17 @@ export function setup(ctx: SpindleFrontendContext) {
       }
       currentGenerationRetryCandidateIndex = null;
     } else if (payload.type === 'new_message') {
-      appendMessage(payload.name, payload.username || payload.name, payload.content, payload.avatarUrl, payload.isUser);
+      if (payload.isUser && payload.clientMessageId) {
+        reconcileUserMessage(
+          payload.clientMessageId,
+          payload.name,
+          payload.username || payload.name,
+          payload.content,
+          payload.avatarUrl,
+        );
+      } else {
+        appendMessage(payload.name, payload.username || payload.name, payload.content, payload.avatarUrl, payload.isUser);
+      }
     } else if (payload.type === 'error') {
       appendMessage('System', 'System', `Error: ${payload.message}`, null);
     }

@@ -804,6 +804,7 @@ function setup(ctx) {
   let currentGenerationRetryCandidateIndex = null;
   let typingPlaceholderVisible = false;
   let typingPlaceholderSpeakerName = null;
+  let localUserMessageCounter = 0;
   function isGroupedAt(index) {
     if (index <= 0)
       return false;
@@ -825,6 +826,10 @@ function setup(ctx) {
   function getVirtualItemKey(index) {
     return isTypingPlaceholderIndex(index) ? "__typing__" : `m:${index}`;
   }
+  function createLocalUserMessageId() {
+    localUserMessageCounter += 1;
+    return `local-user-${Date.now()}-${localUserMessageCounter}`;
+  }
   function getVirtualItemSignature(index) {
     if (isTypingPlaceholderIndex(index)) {
       return [
@@ -841,6 +846,7 @@ function setup(ctx) {
       msg.content,
       msg.avatarUrl || "",
       msg.canRetry ? "retry" : "noretry",
+      msg.clientMessageId || "",
       isGroupedAt(index) ? "grouped" : "solo"
     ].join("|");
   }
@@ -1419,10 +1425,12 @@ function setup(ctx) {
     const text = inputField.value.trim();
     if (!text)
       return;
+    const clientMessageId = createLocalUserMessageId();
     inputField.value = "";
     inputField.rows = 1;
     resetInputHeight();
-    ctx.sendToBackend({ type: "user_message", content: text });
+    appendMessage(userPersona?.name || "You", userPersona?.name || "You", text, userPersona?.avatarUrl || null, true, clientMessageId);
+    ctx.sendToBackend({ type: "user_message", content: text, clientMessageId });
   };
   sendButton.addEventListener("click", sendMessage);
   inputField.addEventListener("input", adjustInputHeight);
@@ -1437,7 +1445,7 @@ function setup(ctx) {
       return;
     ctx.sendToBackend({ type: "trigger_generation" });
   });
-  function appendMessage(name, username, content, avatarUrl, isUser = false) {
+  function appendMessage(name, username, content, avatarUrl, isUser = false, clientMessageId) {
     if (!isUser && typingPlaceholderVisible) {
       setTypingPlaceholder(null, false, false);
     }
@@ -1448,7 +1456,8 @@ function setup(ctx) {
       avatarUrl,
       isUser,
       timestamp: Date.now(),
-      canRetry: false
+      canRetry: false,
+      clientMessageId
     });
     lastSenderId = isUser ? "__user__" : name;
     if (isUser) {
@@ -1466,6 +1475,23 @@ function setup(ctx) {
       unreadCount++;
       badge.textContent = unreadCount > 99 ? "99+" : String(unreadCount);
       badge.style.display = "block";
+    }
+  }
+  function reconcileUserMessage(clientMessageId, name, username, content, avatarUrl) {
+    const index = allMessages.findIndex((msg2) => msg2.isUser && msg2.clientMessageId === clientMessageId);
+    if (index === -1) {
+      appendMessage(name, username, content, avatarUrl, true, clientMessageId);
+      return;
+    }
+    const msg = allMessages[index];
+    const changed = msg.name !== name || msg.username !== username || msg.content !== content || msg.avatarUrl !== avatarUrl;
+    msg.name = name;
+    msg.username = username;
+    msg.content = content;
+    msg.avatarUrl = avatarUrl;
+    msg.clientMessageId = clientMessageId;
+    if (changed) {
+      rerenderMessages(index === allMessages.length - 1 && isStickToBottom);
     }
   }
   function clearMessages() {
@@ -1490,7 +1516,8 @@ function setup(ctx) {
         avatarUrl: msg.avatarUrl,
         isUser: msg.isUser,
         timestamp: msg.timestamp || Date.now(),
-        canRetry: false
+        canRetry: false,
+        clientMessageId: undefined
       });
     }
     lastSenderId = allMessages.length > 0 ? allMessages[allMessages.length - 1].isUser ? "__user__" : allMessages[allMessages.length - 1].name : null;
@@ -1600,7 +1627,11 @@ function setup(ctx) {
       }
       currentGenerationRetryCandidateIndex = null;
     } else if (payload.type === "new_message") {
-      appendMessage(payload.name, payload.username || payload.name, payload.content, payload.avatarUrl, payload.isUser);
+      if (payload.isUser && payload.clientMessageId) {
+        reconcileUserMessage(payload.clientMessageId, payload.name, payload.username || payload.name, payload.content, payload.avatarUrl);
+      } else {
+        appendMessage(payload.name, payload.username || payload.name, payload.content, payload.avatarUrl, payload.isUser);
+      }
     } else if (payload.type === "error") {
       appendMessage("System", "System", `Error: ${payload.message}`, null);
     }
