@@ -621,7 +621,17 @@ export function setup(ctx: SpindleFrontendContext) {
     return el;
   }
   const hostWrapper = getHostWrapper();
-  const sizedWidget = widget as typeof widget & { setSize?: (width: number, height: number) => void };
+  const sizedWidget = widget as typeof widget & {
+    setSize?: (width: number, height: number) => void;
+    isFullscreen?: () => boolean;
+  };
+
+  function syncFullscreenStateFromHost() {
+    if (typeof sizedWidget.isFullscreen === 'function') {
+      isFullscreen = sizedWidget.isFullscreen();
+    }
+    return isFullscreen;
+  }
 
   function setWidgetSize(width: number, height: number) {
     shell.style.setProperty('width', width + 'px', 'important');
@@ -630,6 +640,9 @@ export function setup(ctx: SpindleFrontendContext) {
   }
 
   function restoreSaneWidgetDefaults() {
+    if (syncFullscreenStateFromHost()) {
+      fsBtn.click();
+    }
     const defaults = getDefaultWidgetSize();
     const pos = getDefaultWidgetPosition();
     expandedHeight = defaults.height;
@@ -1248,7 +1261,7 @@ export function setup(ctx: SpindleFrontendContext) {
 
   // ── Collapse / Fullscreen logic ──
   function syncHostWrapperSize() {
-    if (isFullscreen) return;
+    if (syncFullscreenStateFromHost()) return;
     const w = Math.round(shell.getBoundingClientRect().width);
     const h = Math.round(shell.getBoundingClientRect().height);
     const hostW = Math.round(hostWrapper.getBoundingClientRect().width);
@@ -1284,7 +1297,7 @@ export function setup(ctx: SpindleFrontendContext) {
   collapseBtn.addEventListener('click', () => {
     // If we're fullscreen, exit fullscreen before collapsing so the host
     // doesn't fight our height override.
-    if (isFullscreen) {
+    if (syncFullscreenStateFromHost()) {
       fsBtn.click();
     }
     if (!isCollapsed) expandedHeight = shell.offsetHeight;
@@ -1295,6 +1308,7 @@ export function setup(ctx: SpindleFrontendContext) {
   const supportsNativeFullscreen = typeof (widget as any).setFullscreen === 'function';
 
   fsBtn.addEventListener('click', () => {
+    syncFullscreenStateFromHost();
     if (isFullscreen) {
       // Exit fullscreen
       isFullscreen = false;

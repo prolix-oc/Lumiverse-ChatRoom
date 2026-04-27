@@ -485,12 +485,21 @@ function setup(ctx) {
   }
   const hostWrapper = getHostWrapper();
   const sizedWidget = widget;
+  function syncFullscreenStateFromHost() {
+    if (typeof sizedWidget.isFullscreen === "function") {
+      isFullscreen = sizedWidget.isFullscreen();
+    }
+    return isFullscreen;
+  }
   function setWidgetSize(width, height) {
     shell.style.setProperty("width", width + "px", "important");
     shell.style.setProperty("height", height + "px", "important");
     sizedWidget.setSize?.(width, height);
   }
   function restoreSaneWidgetDefaults() {
+    if (syncFullscreenStateFromHost()) {
+      fsBtn.click();
+    }
     const defaults = getDefaultWidgetSize();
     const pos = getDefaultWidgetPosition();
     expandedHeight = defaults.height;
@@ -1026,7 +1035,7 @@ function setup(ctx) {
   resizeHandle.addEventListener("pointerup", onResizePointerUp);
   resizeHandle.addEventListener("pointercancel", onResizePointerUp);
   function syncHostWrapperSize() {
-    if (isFullscreen)
+    if (syncFullscreenStateFromHost())
       return;
     const w = Math.round(shell.getBoundingClientRect().width);
     const h = Math.round(shell.getBoundingClientRect().height);
@@ -1061,7 +1070,7 @@ function setup(ctx) {
     requestAnimationFrame(() => clampWidgetToViewport());
   }
   collapseBtn.addEventListener("click", () => {
-    if (isFullscreen) {
+    if (syncFullscreenStateFromHost()) {
       fsBtn.click();
     }
     if (!isCollapsed)
@@ -1071,6 +1080,7 @@ function setup(ctx) {
   });
   const supportsNativeFullscreen = typeof widget.setFullscreen === "function";
   fsBtn.addEventListener("click", () => {
+    syncFullscreenStateFromHost();
     if (isFullscreen) {
       isFullscreen = false;
       if (supportsNativeFullscreen) {
