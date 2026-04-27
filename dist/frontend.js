@@ -486,6 +486,23 @@ function setup(ctx) {
     }
   }
   setWidgetVisible(false);
+  const shellResizeObserver = new ResizeObserver((entries) => {
+    if (!widgetVisible || isFullscreen)
+      return;
+    for (const entry of entries) {
+      const w = entry.contentRect.width;
+      const h = entry.contentRect.height;
+      if (w < 50 || h < 50) {
+        const defaultW = isMobile ? Math.min(380, window.innerWidth - 16) : 440;
+        const defaultH = isMobile ? Math.min(540, window.innerHeight - 80) : 620;
+        shell.style.setProperty("width", defaultW + "px", "important");
+        shell.style.setProperty("height", (isCollapsed ? header.offsetHeight : defaultH) + "px", "important");
+        if (!isCollapsed)
+          expandedHeight = defaultH;
+      }
+    }
+  });
+  shellResizeObserver.observe(shell);
   function persistWidgetState() {
     if (isMobile)
       return;
@@ -1196,6 +1213,7 @@ function setup(ctx) {
     if (autoTimer)
       clearTimeout(autoTimer);
     window.removeEventListener("pointerdown", onWindowPointerDown, true);
+    shellResizeObserver.disconnect();
     unsubBackend();
     widget.destroy();
     tab.destroy();

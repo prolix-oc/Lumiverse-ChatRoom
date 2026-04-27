@@ -137,6 +137,13 @@ async function runCouncilGeneration(userId?: string) {
 
     const councilContext = councilMembers.map(m => `- ${m.name}: ${m.role}. Personality: ${m.personality}`).join('\\n');
 
+    const memberCount = councilMembers.length;
+    const targetResponses = memberCount === 1 ? 1 : 1 + Math.floor(Math.random() * memberCount);
+
+    const responseInstruction = memberCount === 1
+      ? `Write exactly 1 new message in the chatroom.`
+      : `Write ${targetResponses} new message${targetResponses > 1 ? 's' : ''} in the chatroom.`;
+
     const systemPrompt = `You are running a live internet shitposting chatroom for the "council members" who are watching a story unfold.
 They are watching the main story chat and reacting to it in real-time.
 They talk casually, use internet slang, bicker with each other, and gossip about the characters or the author ({{user}}).
@@ -148,7 +155,7 @@ ${councilContext}
 CURRENT STORY CONTEXT:
 ${chatContext}
 
-Write 1 to 3 new messages in the chatroom.
+${responseInstruction}
 For each message, one council member should speak. They should pick a chat "username" for themselves based on their character, and continue to use it.
 Separate each message with "---" on a new line.
 Format each message exactly as follows:
