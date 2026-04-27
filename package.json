@@ -7,6 +7,7 @@
     "build": "bun build src/backend.ts --outfile=dist/backend.js --target=browser && bun build src/frontend.ts --outfile=dist/frontend.js --target=browser"
   },
   "dependencies": {
+    "@tanstack/virtual-core": "^3.14.0",
     "lumiverse-spindle-types": "0.4.42"
   }
 }

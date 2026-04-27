@@ -1,3 +1,881 @@
+// node_modules/@tanstack/virtual-core/dist/esm/utils.js
+function memo(getDeps, fn, opts) {
+  let deps = opts.initialDeps ?? [];
+  let result;
+  let isInitial = true;
+  function memoizedFunction() {
+    var _a, _b, _c;
+    let depTime;
+    if (opts.key && ((_a = opts.debug) == null ? undefined : _a.call(opts)))
+      depTime = Date.now();
+    const newDeps = getDeps();
+    const depsChanged = newDeps.length !== deps.length || newDeps.some((dep, index) => deps[index] !== dep);
+    if (!depsChanged) {
+      return result;
+    }
+    deps = newDeps;
+    let resultTime;
+    if (opts.key && ((_b = opts.debug) == null ? undefined : _b.call(opts)))
+      resultTime = Date.now();
+    result = fn(...newDeps);
+    if (opts.key && ((_c = opts.debug) == null ? undefined : _c.call(opts))) {
+      const depEndTime = Math.round((Date.now() - depTime) * 100) / 100;
+      const resultEndTime = Math.round((Date.now() - resultTime) * 100) / 100;
+      const resultFpsPercentage = resultEndTime / 16;
+      const pad = (str, num) => {
+        str = String(str);
+        while (str.length < num) {
+          str = " " + str;
+        }
+        return str;
+      };
+      console.info(`%c⏱ ${pad(resultEndTime, 5)} /${pad(depEndTime, 5)} ms`, `
+            font-size: .6rem;
+            font-weight: bold;
+            color: hsl(${Math.max(0, Math.min(120 - 120 * resultFpsPercentage, 120))}deg 100% 31%);`, opts == null ? undefined : opts.key);
+    }
+    if ((opts == null ? undefined : opts.onChange) && !(isInitial && opts.skipInitialOnChange)) {
+      opts.onChange(result);
+    }
+    isInitial = false;
+    return result;
+  }
+  memoizedFunction.updateDeps = (newDeps) => {
+    deps = newDeps;
+  };
+  return memoizedFunction;
+}
+function notUndefined(value, msg) {
+  if (value === undefined) {
+    throw new Error(`Unexpected undefined${msg ? `: ${msg}` : ""}`);
+  } else {
+    return value;
+  }
+}
+var approxEqual = (a, b) => Math.abs(a - b) < 1.01;
+var debounce = (targetWindow, fn, ms) => {
+  let timeoutId;
+  return function(...args) {
+    targetWindow.clearTimeout(timeoutId);
+    timeoutId = targetWindow.setTimeout(() => fn.apply(this, args), ms);
+  };
+};
+
+// node_modules/@tanstack/virtual-core/dist/esm/index.js
+var getRect = (element) => {
+  const { offsetWidth, offsetHeight } = element;
+  return { width: offsetWidth, height: offsetHeight };
+};
+var defaultKeyExtractor = (index) => index;
+var defaultRangeExtractor = (range) => {
+  const start = Math.max(range.startIndex - range.overscan, 0);
+  const end = Math.min(range.endIndex + range.overscan, range.count - 1);
+  const arr = [];
+  for (let i = start;i <= end; i++) {
+    arr.push(i);
+  }
+  return arr;
+};
+var observeElementRect = (instance, cb) => {
+  const element = instance.scrollElement;
+  if (!element) {
+    return;
+  }
+  const targetWindow = instance.targetWindow;
+  if (!targetWindow) {
+    return;
+  }
+  const handler = (rect) => {
+    const { width, height } = rect;
+    cb({ width: Math.round(width), height: Math.round(height) });
+  };
+  handler(getRect(element));
+  if (!targetWindow.ResizeObserver) {
+    return () => {};
+  }
+  const observer = new targetWindow.ResizeObserver((entries) => {
+    const run = () => {
+      const entry = entries[0];
+      if (entry == null ? undefined : entry.borderBoxSize) {
+        const box = entry.borderBoxSize[0];
+        if (box) {
+          handler({ width: box.inlineSize, height: box.blockSize });
+          return;
+        }
+      }
+      handler(getRect(element));
+    };
+    instance.options.useAnimationFrameWithResizeObserver ? requestAnimationFrame(run) : run();
+  });
+  observer.observe(element, { box: "border-box" });
+  return () => {
+    observer.unobserve(element);
+  };
+};
+var addEventListenerOptions = {
+  passive: true
+};
+var supportsScrollend = typeof window == "undefined" ? true : ("onscrollend" in window);
+var observeElementOffset = (instance, cb) => {
+  const element = instance.scrollElement;
+  if (!element) {
+    return;
+  }
+  const targetWindow = instance.targetWindow;
+  if (!targetWindow) {
+    return;
+  }
+  let offset = 0;
+  const fallback = instance.options.useScrollendEvent && supportsScrollend ? () => {
+    return;
+  } : debounce(targetWindow, () => {
+    cb(offset, false);
+  }, instance.options.isScrollingResetDelay);
+  const createHandler = (isScrolling) => () => {
+    const { horizontal, isRtl } = instance.options;
+    offset = horizontal ? element["scrollLeft"] * (isRtl && -1 || 1) : element["scrollTop"];
+    fallback();
+    cb(offset, isScrolling);
+  };
+  const handler = createHandler(true);
+  const endHandler = createHandler(false);
+  element.addEventListener("scroll", handler, addEventListenerOptions);
+  const registerScrollendEvent = instance.options.useScrollendEvent && supportsScrollend;
+  if (registerScrollendEvent) {
+    element.addEventListener("scrollend", endHandler, addEventListenerOptions);
+  }
+  return () => {
+    element.removeEventListener("scroll", handler);
+    if (registerScrollendEvent) {
+      element.removeEventListener("scrollend", endHandler);
+    }
+  };
+};
+var measureElement = (element, entry, instance) => {
+  if (entry == null ? undefined : entry.borderBoxSize) {
+    const box = entry.borderBoxSize[0];
+    if (box) {
+      const size = Math.round(box[instance.options.horizontal ? "inlineSize" : "blockSize"]);
+      return size;
+    }
+  }
+  return element[instance.options.horizontal ? "offsetWidth" : "offsetHeight"];
+};
+var elementScroll = (offset, {
+  adjustments = 0,
+  behavior
+}, instance) => {
+  var _a, _b;
+  const toOffset = offset + adjustments;
+  (_b = (_a = instance.scrollElement) == null ? undefined : _a.scrollTo) == null || _b.call(_a, {
+    [instance.options.horizontal ? "left" : "top"]: toOffset,
+    behavior
+  });
+};
+
+class Virtualizer {
+  constructor(opts) {
+    this.unsubs = [];
+    this.scrollElement = null;
+    this.targetWindow = null;
+    this.isScrolling = false;
+    this.scrollState = null;
+    this.measurementsCache = [];
+    this.itemSizeCache = /* @__PURE__ */ new Map;
+    this.laneAssignments = /* @__PURE__ */ new Map;
+    this.pendingMeasuredCacheIndexes = [];
+    this.prevLanes = undefined;
+    this.lanesChangedFlag = false;
+    this.lanesSettling = false;
+    this.scrollRect = null;
+    this.scrollOffset = null;
+    this.scrollDirection = null;
+    this.scrollAdjustments = 0;
+    this.elementsCache = /* @__PURE__ */ new Map;
+    this.now = () => {
+      var _a, _b, _c;
+      return ((_c = (_b = (_a = this.targetWindow) == null ? undefined : _a.performance) == null ? undefined : _b.now) == null ? undefined : _c.call(_b)) ?? Date.now();
+    };
+    this.observer = /* @__PURE__ */ (() => {
+      let _ro = null;
+      const get = () => {
+        if (_ro) {
+          return _ro;
+        }
+        if (!this.targetWindow || !this.targetWindow.ResizeObserver) {
+          return null;
+        }
+        return _ro = new this.targetWindow.ResizeObserver((entries) => {
+          entries.forEach((entry) => {
+            const run = () => {
+              const node = entry.target;
+              const index = this.indexFromElement(node);
+              if (!node.isConnected) {
+                this.observer.unobserve(node);
+                return;
+              }
+              if (this.shouldMeasureDuringScroll(index)) {
+                this.resizeItem(index, this.options.measureElement(node, entry, this));
+              }
+            };
+            this.options.useAnimationFrameWithResizeObserver ? requestAnimationFrame(run) : run();
+          });
+        });
+      };
+      return {
+        disconnect: () => {
+          var _a;
+          (_a = get()) == null || _a.disconnect();
+          _ro = null;
+        },
+        observe: (target) => {
+          var _a;
+          return (_a = get()) == null ? undefined : _a.observe(target, { box: "border-box" });
+        },
+        unobserve: (target) => {
+          var _a;
+          return (_a = get()) == null ? undefined : _a.unobserve(target);
+        }
+      };
+    })();
+    this.range = null;
+    this.setOptions = (opts2) => {
+      Object.entries(opts2).forEach(([key, value]) => {
+        if (typeof value === "undefined")
+          delete opts2[key];
+      });
+      this.options = {
+        debug: false,
+        initialOffset: 0,
+        overscan: 1,
+        paddingStart: 0,
+        paddingEnd: 0,
+        scrollPaddingStart: 0,
+        scrollPaddingEnd: 0,
+        horizontal: false,
+        getItemKey: defaultKeyExtractor,
+        rangeExtractor: defaultRangeExtractor,
+        onChange: () => {},
+        measureElement,
+        initialRect: { width: 0, height: 0 },
+        scrollMargin: 0,
+        gap: 0,
+        indexAttribute: "data-index",
+        initialMeasurementsCache: [],
+        lanes: 1,
+        isScrollingResetDelay: 150,
+        enabled: true,
+        isRtl: false,
+        useScrollendEvent: false,
+        useAnimationFrameWithResizeObserver: false,
+        laneAssignmentMode: "estimate",
+        ...opts2
+      };
+    };
+    this.notify = (sync) => {
+      var _a, _b;
+      (_b = (_a = this.options).onChange) == null || _b.call(_a, this, sync);
+    };
+    this.maybeNotify = memo(() => {
+      this.calculateRange();
+      return [
+        this.isScrolling,
+        this.range ? this.range.startIndex : null,
+        this.range ? this.range.endIndex : null
+      ];
+    }, (isScrolling) => {
+      this.notify(isScrolling);
+    }, {
+      key: "maybeNotify",
+      debug: () => this.options.debug,
+      initialDeps: [
+        this.isScrolling,
+        this.range ? this.range.startIndex : null,
+        this.range ? this.range.endIndex : null
+      ]
+    });
+    this.cleanup = () => {
+      this.unsubs.filter(Boolean).forEach((d) => d());
+      this.unsubs = [];
+      this.observer.disconnect();
+      if (this.rafId != null && this.targetWindow) {
+        this.targetWindow.cancelAnimationFrame(this.rafId);
+        this.rafId = null;
+      }
+      this.scrollState = null;
+      this.scrollElement = null;
+      this.targetWindow = null;
+    };
+    this._didMount = () => {
+      return () => {
+        this.cleanup();
+      };
+    };
+    this._willUpdate = () => {
+      var _a;
+      const scrollElement = this.options.enabled ? this.options.getScrollElement() : null;
+      if (this.scrollElement !== scrollElement) {
+        this.cleanup();
+        if (!scrollElement) {
+          this.maybeNotify();
+          return;
+        }
+        this.scrollElement = scrollElement;
+        if (this.scrollElement && "ownerDocument" in this.scrollElement) {
+          this.targetWindow = this.scrollElement.ownerDocument.defaultView;
+        } else {
+          this.targetWindow = ((_a = this.scrollElement) == null ? undefined : _a.window) ?? null;
+        }
+        this.elementsCache.forEach((cached) => {
+          this.observer.observe(cached);
+        });
+        this.unsubs.push(this.options.observeElementRect(this, (rect) => {
+          this.scrollRect = rect;
+          this.maybeNotify();
+        }));
+        this.unsubs.push(this.options.observeElementOffset(this, (offset, isScrolling) => {
+          this.scrollAdjustments = 0;
+          this.scrollDirection = isScrolling ? this.getScrollOffset() < offset ? "forward" : "backward" : null;
+          this.scrollOffset = offset;
+          this.isScrolling = isScrolling;
+          if (this.scrollState) {
+            this.scheduleScrollReconcile();
+          }
+          this.maybeNotify();
+        }));
+        this._scrollToOffset(this.getScrollOffset(), {
+          adjustments: undefined,
+          behavior: undefined
+        });
+      }
+    };
+    this.rafId = null;
+    this.getSize = () => {
+      if (!this.options.enabled) {
+        this.scrollRect = null;
+        return 0;
+      }
+      this.scrollRect = this.scrollRect ?? this.options.initialRect;
+      return this.scrollRect[this.options.horizontal ? "width" : "height"];
+    };
+    this.getScrollOffset = () => {
+      if (!this.options.enabled) {
+        this.scrollOffset = null;
+        return 0;
+      }
+      this.scrollOffset = this.scrollOffset ?? (typeof this.options.initialOffset === "function" ? this.options.initialOffset() : this.options.initialOffset);
+      return this.scrollOffset;
+    };
+    this.getFurthestMeasurement = (measurements, index) => {
+      const furthestMeasurementsFound = /* @__PURE__ */ new Map;
+      const furthestMeasurements = /* @__PURE__ */ new Map;
+      for (let m = index - 1;m >= 0; m--) {
+        const measurement = measurements[m];
+        if (furthestMeasurementsFound.has(measurement.lane)) {
+          continue;
+        }
+        const previousFurthestMeasurement = furthestMeasurements.get(measurement.lane);
+        if (previousFurthestMeasurement == null || measurement.end > previousFurthestMeasurement.end) {
+          furthestMeasurements.set(measurement.lane, measurement);
+        } else if (measurement.end < previousFurthestMeasurement.end) {
+          furthestMeasurementsFound.set(measurement.lane, true);
+        }
+        if (furthestMeasurementsFound.size === this.options.lanes) {
+          break;
+        }
+      }
+      return furthestMeasurements.size === this.options.lanes ? Array.from(furthestMeasurements.values()).sort((a, b) => {
+        if (a.end === b.end) {
+          return a.index - b.index;
+        }
+        return a.end - b.end;
+      })[0] : undefined;
+    };
+    this.getMeasurementOptions = memo(() => [
+      this.options.count,
+      this.options.paddingStart,
+      this.options.scrollMargin,
+      this.options.getItemKey,
+      this.options.enabled,
+      this.options.lanes,
+      this.options.laneAssignmentMode
+    ], (count, paddingStart, scrollMargin, getItemKey, enabled, lanes, laneAssignmentMode) => {
+      const lanesChanged = this.prevLanes !== undefined && this.prevLanes !== lanes;
+      if (lanesChanged) {
+        this.lanesChangedFlag = true;
+      }
+      this.prevLanes = lanes;
+      this.pendingMeasuredCacheIndexes = [];
+      return {
+        count,
+        paddingStart,
+        scrollMargin,
+        getItemKey,
+        enabled,
+        lanes,
+        laneAssignmentMode
+      };
+    }, {
+      key: false
+    });
+    this.getMeasurements = memo(() => [this.getMeasurementOptions(), this.itemSizeCache], ({
+      count,
+      paddingStart,
+      scrollMargin,
+      getItemKey,
+      enabled,
+      lanes,
+      laneAssignmentMode
+    }, itemSizeCache) => {
+      if (!enabled) {
+        this.measurementsCache = [];
+        this.itemSizeCache.clear();
+        this.laneAssignments.clear();
+        return [];
+      }
+      if (this.laneAssignments.size > count) {
+        for (const index of this.laneAssignments.keys()) {
+          if (index >= count) {
+            this.laneAssignments.delete(index);
+          }
+        }
+      }
+      if (this.lanesChangedFlag) {
+        this.lanesChangedFlag = false;
+        this.lanesSettling = true;
+        this.measurementsCache = [];
+        this.itemSizeCache.clear();
+        this.laneAssignments.clear();
+        this.pendingMeasuredCacheIndexes = [];
+      }
+      if (this.measurementsCache.length === 0 && !this.lanesSettling) {
+        this.measurementsCache = this.options.initialMeasurementsCache;
+        this.measurementsCache.forEach((item) => {
+          this.itemSizeCache.set(item.key, item.size);
+        });
+      }
+      const min = this.lanesSettling ? 0 : this.pendingMeasuredCacheIndexes.length > 0 ? Math.min(...this.pendingMeasuredCacheIndexes) : 0;
+      this.pendingMeasuredCacheIndexes = [];
+      if (this.lanesSettling && this.measurementsCache.length === count) {
+        this.lanesSettling = false;
+      }
+      const measurements = this.measurementsCache.slice(0, min);
+      const laneLastIndex = new Array(lanes).fill(undefined);
+      for (let m = 0;m < min; m++) {
+        const item = measurements[m];
+        if (item) {
+          laneLastIndex[item.lane] = m;
+        }
+      }
+      for (let i = min;i < count; i++) {
+        const key = getItemKey(i);
+        const cachedLane = this.laneAssignments.get(i);
+        let lane;
+        let start;
+        const shouldCacheLane = laneAssignmentMode === "estimate" || itemSizeCache.has(key);
+        if (cachedLane !== undefined && this.options.lanes > 1) {
+          lane = cachedLane;
+          const prevIndex = laneLastIndex[lane];
+          const prevInLane = prevIndex !== undefined ? measurements[prevIndex] : undefined;
+          start = prevInLane ? prevInLane.end + this.options.gap : paddingStart + scrollMargin;
+        } else {
+          const furthestMeasurement = this.options.lanes === 1 ? measurements[i - 1] : this.getFurthestMeasurement(measurements, i);
+          start = furthestMeasurement ? furthestMeasurement.end + this.options.gap : paddingStart + scrollMargin;
+          lane = furthestMeasurement ? furthestMeasurement.lane : i % this.options.lanes;
+          if (this.options.lanes > 1 && shouldCacheLane) {
+            this.laneAssignments.set(i, lane);
+          }
+        }
+        const measuredSize = itemSizeCache.get(key);
+        const size = typeof measuredSize === "number" ? measuredSize : this.options.estimateSize(i);
+        const end = start + size;
+        measurements[i] = {
+          index: i,
+          start,
+          size,
+          end,
+          key,
+          lane
+        };
+        laneLastIndex[lane] = i;
+      }
+      this.measurementsCache = measurements;
+      return measurements;
+    }, {
+      key: "getMeasurements",
+      debug: () => this.options.debug
+    });
+    this.calculateRange = memo(() => [
+      this.getMeasurements(),
+      this.getSize(),
+      this.getScrollOffset(),
+      this.options.lanes
+    ], (measurements, outerSize, scrollOffset, lanes) => {
+      return this.range = measurements.length > 0 && outerSize > 0 ? calculateRange({
+        measurements,
+        outerSize,
+        scrollOffset,
+        lanes
+      }) : null;
+    }, {
+      key: "calculateRange",
+      debug: () => this.options.debug
+    });
+    this.getVirtualIndexes = memo(() => {
+      let startIndex = null;
+      let endIndex = null;
+      const range = this.calculateRange();
+      if (range) {
+        startIndex = range.startIndex;
+        endIndex = range.endIndex;
+      }
+      this.maybeNotify.updateDeps([this.isScrolling, startIndex, endIndex]);
+      return [
+        this.options.rangeExtractor,
+        this.options.overscan,
+        this.options.count,
+        startIndex,
+        endIndex
+      ];
+    }, (rangeExtractor, overscan, count, startIndex, endIndex) => {
+      return startIndex === null || endIndex === null ? [] : rangeExtractor({
+        startIndex,
+        endIndex,
+        overscan,
+        count
+      });
+    }, {
+      key: "getVirtualIndexes",
+      debug: () => this.options.debug
+    });
+    this.indexFromElement = (node) => {
+      const attributeName = this.options.indexAttribute;
+      const indexStr = node.getAttribute(attributeName);
+      if (!indexStr) {
+        console.warn(`Missing attribute name '${attributeName}={index}' on measured element.`);
+        return -1;
+      }
+      return parseInt(indexStr, 10);
+    };
+    this.shouldMeasureDuringScroll = (index) => {
+      var _a;
+      if (!this.scrollState || this.scrollState.behavior !== "smooth") {
+        return true;
+      }
+      const scrollIndex = this.scrollState.index ?? ((_a = this.getVirtualItemForOffset(this.scrollState.lastTargetOffset)) == null ? undefined : _a.index);
+      if (scrollIndex !== undefined && this.range) {
+        const bufferSize = Math.max(this.options.overscan, Math.ceil((this.range.endIndex - this.range.startIndex) / 2));
+        const minIndex = Math.max(0, scrollIndex - bufferSize);
+        const maxIndex = Math.min(this.options.count - 1, scrollIndex + bufferSize);
+        return index >= minIndex && index <= maxIndex;
+      }
+      return true;
+    };
+    this.measureElement = (node) => {
+      if (!node) {
+        this.elementsCache.forEach((cached, key2) => {
+          if (!cached.isConnected) {
+            this.observer.unobserve(cached);
+            this.elementsCache.delete(key2);
+          }
+        });
+        return;
+      }
+      const index = this.indexFromElement(node);
+      const key = this.options.getItemKey(index);
+      const prevNode = this.elementsCache.get(key);
+      if (prevNode !== node) {
+        if (prevNode) {
+          this.observer.unobserve(prevNode);
+        }
+        this.observer.observe(node);
+        this.elementsCache.set(key, node);
+      }
+      if ((!this.isScrolling || this.scrollState) && this.shouldMeasureDuringScroll(index)) {
+        this.resizeItem(index, this.options.measureElement(node, undefined, this));
+      }
+    };
+    this.resizeItem = (index, size) => {
+      var _a;
+      const item = this.measurementsCache[index];
+      if (!item)
+        return;
+      const itemSize = this.itemSizeCache.get(item.key) ?? item.size;
+      const delta = size - itemSize;
+      if (delta !== 0) {
+        if (((_a = this.scrollState) == null ? undefined : _a.behavior) !== "smooth" && (this.shouldAdjustScrollPositionOnItemSizeChange !== undefined ? this.shouldAdjustScrollPositionOnItemSizeChange(item, delta, this) : item.start < this.getScrollOffset() + this.scrollAdjustments)) {
+          if (this.options.debug) {
+            console.info("correction", delta);
+          }
+          this._scrollToOffset(this.getScrollOffset(), {
+            adjustments: this.scrollAdjustments += delta,
+            behavior: undefined
+          });
+        }
+        this.pendingMeasuredCacheIndexes.push(item.index);
+        this.itemSizeCache = new Map(this.itemSizeCache.set(item.key, size));
+        this.notify(false);
+      }
+    };
+    this.getVirtualItems = memo(() => [this.getVirtualIndexes(), this.getMeasurements()], (indexes, measurements) => {
+      const virtualItems = [];
+      for (let k = 0, len = indexes.length;k < len; k++) {
+        const i = indexes[k];
+        const measurement = measurements[i];
+        virtualItems.push(measurement);
+      }
+      return virtualItems;
+    }, {
+      key: "getVirtualItems",
+      debug: () => this.options.debug
+    });
+    this.getVirtualItemForOffset = (offset) => {
+      const measurements = this.getMeasurements();
+      if (measurements.length === 0) {
+        return;
+      }
+      return notUndefined(measurements[findNearestBinarySearch(0, measurements.length - 1, (index) => notUndefined(measurements[index]).start, offset)]);
+    };
+    this.getMaxScrollOffset = () => {
+      if (!this.scrollElement)
+        return 0;
+      if ("scrollHeight" in this.scrollElement) {
+        return this.options.horizontal ? this.scrollElement.scrollWidth - this.scrollElement.clientWidth : this.scrollElement.scrollHeight - this.scrollElement.clientHeight;
+      } else {
+        const doc = this.scrollElement.document.documentElement;
+        return this.options.horizontal ? doc.scrollWidth - this.scrollElement.innerWidth : doc.scrollHeight - this.scrollElement.innerHeight;
+      }
+    };
+    this.getOffsetForAlignment = (toOffset, align, itemSize = 0) => {
+      if (!this.scrollElement)
+        return 0;
+      const size = this.getSize();
+      const scrollOffset = this.getScrollOffset();
+      if (align === "auto") {
+        align = toOffset >= scrollOffset + size ? "end" : "start";
+      }
+      if (align === "center") {
+        toOffset += (itemSize - size) / 2;
+      } else if (align === "end") {
+        toOffset -= size;
+      }
+      const maxOffset = this.getMaxScrollOffset();
+      return Math.max(Math.min(maxOffset, toOffset), 0);
+    };
+    this.getOffsetForIndex = (index, align = "auto") => {
+      index = Math.max(0, Math.min(index, this.options.count - 1));
+      const size = this.getSize();
+      const scrollOffset = this.getScrollOffset();
+      const item = this.measurementsCache[index];
+      if (!item)
+        return;
+      if (align === "auto") {
+        if (item.end >= scrollOffset + size - this.options.scrollPaddingEnd) {
+          align = "end";
+        } else if (item.start <= scrollOffset + this.options.scrollPaddingStart) {
+          align = "start";
+        } else {
+          return [scrollOffset, align];
+        }
+      }
+      if (align === "end" && index === this.options.count - 1) {
+        return [this.getMaxScrollOffset(), align];
+      }
+      const toOffset = align === "end" ? item.end + this.options.scrollPaddingEnd : item.start - this.options.scrollPaddingStart;
+      return [
+        this.getOffsetForAlignment(toOffset, align, item.size),
+        align
+      ];
+    };
+    this.scrollToOffset = (toOffset, { align = "start", behavior = "auto" } = {}) => {
+      const offset = this.getOffsetForAlignment(toOffset, align);
+      const now = this.now();
+      this.scrollState = {
+        index: null,
+        align,
+        behavior,
+        startedAt: now,
+        lastTargetOffset: offset,
+        stableFrames: 0
+      };
+      this._scrollToOffset(offset, { adjustments: undefined, behavior });
+      this.scheduleScrollReconcile();
+    };
+    this.scrollToIndex = (index, {
+      align: initialAlign = "auto",
+      behavior = "auto"
+    } = {}) => {
+      index = Math.max(0, Math.min(index, this.options.count - 1));
+      const offsetInfo = this.getOffsetForIndex(index, initialAlign);
+      if (!offsetInfo) {
+        return;
+      }
+      const [offset, align] = offsetInfo;
+      const now = this.now();
+      this.scrollState = {
+        index,
+        align,
+        behavior,
+        startedAt: now,
+        lastTargetOffset: offset,
+        stableFrames: 0
+      };
+      this._scrollToOffset(offset, { adjustments: undefined, behavior });
+      this.scheduleScrollReconcile();
+    };
+    this.scrollBy = (delta, { behavior = "auto" } = {}) => {
+      const offset = this.getScrollOffset() + delta;
+      const now = this.now();
+      this.scrollState = {
+        index: null,
+        align: "start",
+        behavior,
+        startedAt: now,
+        lastTargetOffset: offset,
+        stableFrames: 0
+      };
+      this._scrollToOffset(offset, { adjustments: undefined, behavior });
+      this.scheduleScrollReconcile();
+    };
+    this.getTotalSize = () => {
+      var _a;
+      const measurements = this.getMeasurements();
+      let end;
+      if (measurements.length === 0) {
+        end = this.options.paddingStart;
+      } else if (this.options.lanes === 1) {
+        end = ((_a = measurements[measurements.length - 1]) == null ? undefined : _a.end) ?? 0;
+      } else {
+        const endByLane = Array(this.options.lanes).fill(null);
+        let endIndex = measurements.length - 1;
+        while (endIndex >= 0 && endByLane.some((val) => val === null)) {
+          const item = measurements[endIndex];
+          if (endByLane[item.lane] === null) {
+            endByLane[item.lane] = item.end;
+          }
+          endIndex--;
+        }
+        end = Math.max(...endByLane.filter((val) => val !== null));
+      }
+      return Math.max(end - this.options.scrollMargin + this.options.paddingEnd, 0);
+    };
+    this._scrollToOffset = (offset, {
+      adjustments,
+      behavior
+    }) => {
+      this.options.scrollToFn(offset, { behavior, adjustments }, this);
+    };
+    this.measure = () => {
+      this.itemSizeCache = /* @__PURE__ */ new Map;
+      this.laneAssignments = /* @__PURE__ */ new Map;
+      this.notify(false);
+    };
+    this.setOptions(opts);
+  }
+  scheduleScrollReconcile() {
+    if (!this.targetWindow) {
+      this.scrollState = null;
+      return;
+    }
+    if (this.rafId != null)
+      return;
+    this.rafId = this.targetWindow.requestAnimationFrame(() => {
+      this.rafId = null;
+      this.reconcileScroll();
+    });
+  }
+  reconcileScroll() {
+    if (!this.scrollState)
+      return;
+    const el = this.scrollElement;
+    if (!el)
+      return;
+    const MAX_RECONCILE_MS = 5000;
+    if (this.now() - this.scrollState.startedAt > MAX_RECONCILE_MS) {
+      this.scrollState = null;
+      return;
+    }
+    const offsetInfo = this.scrollState.index != null ? this.getOffsetForIndex(this.scrollState.index, this.scrollState.align) : undefined;
+    const targetOffset = offsetInfo ? offsetInfo[0] : this.scrollState.lastTargetOffset;
+    const STABLE_FRAMES = 1;
+    const targetChanged = targetOffset !== this.scrollState.lastTargetOffset;
+    if (!targetChanged && approxEqual(targetOffset, this.getScrollOffset())) {
+      this.scrollState.stableFrames++;
+      if (this.scrollState.stableFrames >= STABLE_FRAMES) {
+        this.scrollState = null;
+        return;
+      }
+    } else {
+      this.scrollState.stableFrames = 0;
+      if (targetChanged) {
+        this.scrollState.lastTargetOffset = targetOffset;
+        this.scrollState.behavior = "auto";
+        this._scrollToOffset(targetOffset, {
+          adjustments: undefined,
+          behavior: "auto"
+        });
+      }
+    }
+    this.scheduleScrollReconcile();
+  }
+}
+var findNearestBinarySearch = (low, high, getCurrentValue, value) => {
+  while (low <= high) {
+    const middle = (low + high) / 2 | 0;
+    const currentValue = getCurrentValue(middle);
+    if (currentValue < value) {
+      low = middle + 1;
+    } else if (currentValue > value) {
+      high = middle - 1;
+    } else {
+      return middle;
+    }
+  }
+  if (low > 0) {
+    return low - 1;
+  } else {
+    return 0;
+  }
+};
+function calculateRange({
+  measurements,
+  outerSize,
+  scrollOffset,
+  lanes
+}) {
+  const lastIndex = measurements.length - 1;
+  const getOffset = (index) => measurements[index].start;
+  if (measurements.length <= lanes) {
+    return {
+      startIndex: 0,
+      endIndex: lastIndex
+    };
+  }
+  let startIndex = findNearestBinarySearch(0, lastIndex, getOffset, scrollOffset);
+  let endIndex = startIndex;
+  if (lanes === 1) {
+    while (endIndex < lastIndex && measurements[endIndex].end < scrollOffset + outerSize) {
+      endIndex++;
+    }
+  } else if (lanes > 1) {
+    const endPerLane = Array(lanes).fill(0);
+    while (endIndex < lastIndex && endPerLane.some((pos) => pos < scrollOffset + outerSize)) {
+      const item = measurements[endIndex];
+      endPerLane[item.lane] = item.end;
+      endIndex++;
+    }
+    const startPerLane = Array(lanes).fill(scrollOffset + outerSize);
+    while (startIndex >= 0 && startPerLane.some((pos) => pos >= scrollOffset)) {
+      const item = measurements[startIndex];
+      startPerLane[item.lane] = item.start;
+      startIndex--;
+    }
+    startIndex = Math.max(0, startIndex - startIndex % lanes);
+    endIndex = Math.min(lastIndex, endIndex + (lanes - 1 - endIndex % lanes));
+  }
+  return { startIndex, endIndex };
+}
+
 // src/frontend.ts
 function setup(ctx) {
   const tab = ctx.ui.registerDrawerTab({
@@ -782,23 +1660,17 @@ function setup(ctx) {
   messageList.className = "chatroom-scroll";
   messageList.style.cssText = `
     flex:1;overflow-y:auto;overflow-x:hidden;
-    padding:16px;display:flex;flex-direction:column;gap:2px;min-height:0;
+    min-height:0;position:relative;
   `;
-  const topSpacer = document.createElement("div");
-  topSpacer.style.cssText = "flex-shrink:0;";
   const virtualContent = document.createElement("div");
-  virtualContent.style.cssText = "display:flex;flex-direction:column;gap:2px;min-height:0;";
-  const bottomSpacer = document.createElement("div");
-  bottomSpacer.style.cssText = "flex-shrink:0;";
-  messageList.appendChild(topSpacer);
+  virtualContent.style.cssText = "position:relative;width:100%;min-height:100%;";
   messageList.appendChild(virtualContent);
-  messageList.appendChild(bottomSpacer);
   body.appendChild(messageList);
   let allMessages = [];
   const msgHeightCache = new Map;
   const ESTIMATED_MSG_HEIGHT = 60;
   const VIRTUAL_OVERSCAN = 12;
-  let virtualRange = { start: 0, end: -1 };
+  const VIRTUAL_LIST_PADDING = 16;
   let isStickToBottom = true;
   let pendingUserRetryCandidateIndex = null;
   let currentGenerationRetryCandidateIndex = null;
@@ -807,6 +1679,9 @@ function setup(ctx) {
   let localUserMessageCounter = 0;
   let localMessageCounter = 0;
   const animatedMessageIds = new Set;
+  let ignoreScrollTrackingUntil = 0;
+  let bottomScrollRaf = null;
+  let pendingBottomScrollBehavior = null;
   function isGroupedAt(index) {
     if (index <= 0)
       return false;
@@ -826,7 +1701,12 @@ function setup(ctx) {
     return typingPlaceholderVisible && index === allMessages.length;
   }
   function getVirtualItemKey(index) {
-    return isTypingPlaceholderIndex(index) ? "__typing__" : `m:${index}`;
+    return isTypingPlaceholderIndex(index) ? "__typing__" : allMessages[index]?.messageId || `m:${index}`;
+  }
+  function getItemTopSpacing(index) {
+    if (index <= 0)
+      return 0;
+    return isTypingPlaceholderIndex(index) ? isTypingPlaceholderGrouped() ? 2 : 12 : isGroupedAt(index) ? 2 : 12;
   }
   function createLocalUserMessageId() {
     localUserMessageCounter += 1;
@@ -836,46 +1716,41 @@ function setup(ctx) {
     localMessageCounter += 1;
     return `${prefix}-msg-${Date.now()}-${localMessageCounter}`;
   }
-  function getVirtualItemSignature(index) {
-    if (isTypingPlaceholderIndex(index)) {
-      return [
-        "typing",
-        typingPlaceholderSpeakerName || "",
-        isTypingPlaceholderGrouped() ? "grouped" : "solo"
-      ].join("|");
-    }
-    const msg = allMessages[index];
-    return [
-      msg.messageId,
-      msg.isUser ? "user" : "assistant",
-      msg.name,
-      msg.username,
-      msg.content,
-      msg.avatarUrl || "",
-      msg.canRetry ? "retry" : "noretry",
-      msg.clientMessageId || "",
-      isGroupedAt(index) ? "grouped" : "solo"
-    ].join("|");
-  }
   function setTypingPlaceholder(speakerName, visible, shouldScrollToBottom = false) {
     const normalizedSpeaker = speakerName?.trim() ? speakerName.trim() : null;
     const changed = typingPlaceholderVisible !== visible || typingPlaceholderSpeakerName !== normalizedSpeaker;
     typingPlaceholderVisible = visible;
     typingPlaceholderSpeakerName = normalizedSpeaker;
     if (changed) {
-      rerenderMessages(shouldScrollToBottom);
+      refreshVirtualizer(shouldScrollToBottom, "auto");
     } else if (shouldScrollToBottom) {
-      scrollToLatest("smooth");
+      requestBottomScroll("auto");
     }
   }
-  function scrollToLatest(behavior = "smooth") {
-    const lastIndex = getVirtualItemCount() - 1;
-    const target = lastIndex >= 0 ? virtualContent.querySelector(`[data-vindex="${lastIndex}"]`) : null;
-    (target || bottomSpacer).scrollIntoView({ block: "end", behavior });
+  function requestBottomScroll(behavior = "auto") {
+    if (getVirtualItemCount() === 0)
+      return;
+    pendingBottomScrollBehavior = behavior;
+    if (bottomScrollRaf != null)
+      return;
+    bottomScrollRaf = requestAnimationFrame(() => {
+      bottomScrollRaf = null;
+      const nextBehavior = pendingBottomScrollBehavior || "auto";
+      pendingBottomScrollBehavior = null;
+      ignoreScrollTrackingUntil = performance.now() + 120;
+      rowVirtualizer.scrollToIndex(getVirtualItemCount() - 1, {
+        align: "end",
+        behavior: isGenerating ? "auto" : nextBehavior
+      });
+    });
   }
-  function rerenderMessages(shouldScrollToBottom = false) {
-    virtualContent.innerHTML = "";
-    syncVirtualWindow(shouldScrollToBottom);
+  function refreshVirtualizer(shouldScrollToBottom = false, scrollBehavior = "auto") {
+    rowVirtualizer.setOptions(buildVirtualizerOptions());
+    rowVirtualizer._willUpdate();
+    renderVirtualItems(rowVirtualizer);
+    if (shouldScrollToBottom || isStickToBottom) {
+      requestBottomScroll(shouldScrollToBottom ? scrollBehavior : "auto");
+    }
   }
   function clearRetryFlags(shouldScrollToBottom = false) {
     let changed = false;
@@ -886,7 +1761,7 @@ function setup(ctx) {
       }
     }
     if (changed) {
-      rerenderMessages(shouldScrollToBottom);
+      refreshVirtualizer(shouldScrollToBottom, "auto");
     }
   }
   function setRetryFlag(index) {
@@ -894,7 +1769,7 @@ function setup(ctx) {
     if (index == null || !allMessages[index]?.isUser)
       return;
     allMessages[index].canRetry = true;
-    rerenderMessages(false);
+    refreshVirtualizer(false, "auto");
   }
   function isTypingPlaceholderGrouped() {
     if (!typingPlaceholderVisible || !typingPlaceholderSpeakerName || allMessages.length === 0)
@@ -902,15 +1777,18 @@ function setup(ctx) {
     const prev = allMessages[allMessages.length - 1];
     return !prev.isUser && prev.name === typingPlaceholderSpeakerName;
   }
-  function createTypingPlaceholderElement() {
+  function createTypingPlaceholderElement(index) {
     const isGrouped = isTypingPlaceholderGrouped();
     const speakerName = typingPlaceholderSpeakerName || "Council";
+    const row = document.createElement("div");
+    row.style.cssText = `
+      width:100%;box-sizing:border-box;padding-top:${getItemTopSpacing(index)}px;
+    `;
     const wrap = document.createElement("div");
     wrap.className = "chatroom-msg";
     wrap.style.cssText = `
       display:flex;gap:10px;align-items:flex-start;max-width:85%;
-      align-self:flex-start;
-      ${isGrouped ? "margin-top:2px;" : "margin-top:12px;"}
+      margin-right:auto;
     `;
     const avatarWrap = document.createElement("div");
     avatarWrap.style.cssText = `flex-shrink:0;width:32px;height:32px;${isGrouped ? "visibility:hidden;" : ""}`;
@@ -944,18 +1822,23 @@ function setup(ctx) {
     `;
     col.appendChild(bubble);
     wrap.appendChild(col);
-    return wrap;
+    row.appendChild(wrap);
+    return row;
   }
   function createMessageElement(index) {
     const msg = allMessages[index];
     const isGrouped = isGroupedAt(index);
     const isUser = msg.isUser;
+    const row = document.createElement("div");
+    row.dataset.messageId = msg.messageId;
+    row.style.cssText = `
+      width:100%;box-sizing:border-box;padding-top:${getItemTopSpacing(index)}px;
+    `;
     const wrap = document.createElement("div");
     wrap.className = "chatroom-msg";
     wrap.style.cssText = `
       display:flex;gap:10px;align-items:flex-start;max-width:85%;
-      ${isUser ? "align-self:flex-end;flex-direction:row-reverse;" : "align-self:flex-start;"}
-      ${isGrouped ? "margin-top:2px;" : "margin-top:12px;"}
+      ${isUser ? "margin-left:auto;flex-direction:row-reverse;" : "margin-right:auto;"}
     `;
     if (!animatedMessageIds.has(msg.messageId)) {
       wrap.classList.add("chatroom-msg-entering");
@@ -1049,117 +1932,68 @@ function setup(ctx) {
     metaRow.appendChild(timeEl);
     col.appendChild(metaRow);
     wrap.appendChild(col);
-    return wrap;
+    row.appendChild(wrap);
+    return row;
   }
-  function syncVirtualWindow(shouldScrollToBottom = false) {
-    const itemCount = getVirtualItemCount();
-    if (itemCount === 0) {
-      topSpacer.style.height = "0px";
-      bottomSpacer.style.height = "0px";
-      virtualContent.innerHTML = "";
-      virtualRange = { start: 0, end: -1 };
+  function buildVirtualizerOptions() {
+    return {
+      count: getVirtualItemCount(),
+      getScrollElement: () => messageList,
+      estimateSize: (index) => msgHeightCache.get(getVirtualItemKey(index)) || ESTIMATED_MSG_HEIGHT,
+      getItemKey: getVirtualItemKey,
+      overscan: VIRTUAL_OVERSCAN,
+      paddingStart: VIRTUAL_LIST_PADDING,
+      paddingEnd: VIRTUAL_LIST_PADDING,
+      observeElementRect,
+      observeElementOffset,
+      scrollToFn: elementScroll,
+      useAnimationFrameWithResizeObserver: true,
+      onChange: (instance, sync) => {
+        renderVirtualItems(instance);
+        if (!sync && isStickToBottom && getVirtualItemCount() > 0 && pendingBottomScrollBehavior == null) {
+          requestBottomScroll("auto");
+        }
+      }
+    };
+  }
+  const rowVirtualizer = new Virtualizer(buildVirtualizerOptions());
+  const destroyVirtualizer = rowVirtualizer._didMount();
+  rowVirtualizer._willUpdate();
+  function renderVirtualItems(instance) {
+    const items = instance.getVirtualItems();
+    virtualContent.replaceChildren();
+    rowVirtualizer.measureElement(null);
+    virtualContent.style.height = `${instance.getTotalSize()}px`;
+    if (items.length === 0) {
       return;
     }
-    const scrollTop = messageList.scrollTop;
-    const viewportHeight = messageList.clientHeight;
-    let startIdx = 0;
-    let endIdx = itemCount - 1;
-    if (shouldScrollToBottom) {
-      const estimatedVisibleItems = Math.ceil(viewportHeight / ESTIMATED_MSG_HEIGHT);
-      startIdx = Math.max(0, itemCount - estimatedVisibleItems - VIRTUAL_OVERSCAN);
-    } else {
-      let accumulated = 0;
-      for (let i = 0;i < itemCount; i++) {
-        const h = msgHeightCache.get(getVirtualItemKey(i)) || ESTIMATED_MSG_HEIGHT;
-        if (accumulated + h > scrollTop - VIRTUAL_OVERSCAN * ESTIMATED_MSG_HEIGHT) {
-          startIdx = i;
-          break;
-        }
-        accumulated += h;
+    const fragment = document.createDocumentFragment();
+    const rows = [];
+    for (const item of items) {
+      const row = isTypingPlaceholderIndex(item.index) ? createTypingPlaceholderElement(item.index) : createMessageElement(item.index);
+      row.setAttribute("data-index", String(item.index));
+      row.dataset.vkey = String(item.key);
+      row.style.position = "absolute";
+      row.style.top = "0";
+      row.style.left = "0";
+      row.style.width = "100%";
+      row.style.transform = `translateY(${item.start}px)`;
+      fragment.appendChild(row);
+      rows.push(row);
+    }
+    virtualContent.appendChild(fragment);
+    for (const row of rows) {
+      rowVirtualizer.measureElement(row);
+      const index = Number.parseInt(row.getAttribute("data-index") || "-1", 10);
+      if (index >= 0) {
+        msgHeightCache.set(getVirtualItemKey(index), row.offsetHeight);
       }
-      let visibleH = 0;
-      endIdx = startIdx;
-      for (let i = startIdx;i < itemCount; i++) {
-        const h = msgHeightCache.get(getVirtualItemKey(i)) || ESTIMATED_MSG_HEIGHT;
-        visibleH += h;
-        endIdx = i;
-        if (visibleH > viewportHeight + VIRTUAL_OVERSCAN * ESTIMATED_MSG_HEIGHT)
-          break;
-      }
-    }
-    let topHeight = 0;
-    for (let i = 0;i < startIdx; i++) {
-      topHeight += msgHeightCache.get(getVirtualItemKey(i)) || ESTIMATED_MSG_HEIGHT;
-    }
-    let bottomHeight = 0;
-    for (let i = endIdx + 1;i < itemCount; i++) {
-      bottomHeight += msgHeightCache.get(getVirtualItemKey(i)) || ESTIMATED_MSG_HEIGHT;
-    }
-    topSpacer.style.height = topHeight + "px";
-    bottomSpacer.style.height = bottomHeight + "px";
-    const existing = new Map;
-    for (const child of Array.from(virtualContent.children)) {
-      const idx = parseInt(child.dataset.vindex || "-1", 10);
-      if (idx >= 0)
-        existing.set(idx, child);
-    }
-    for (const [idx, el] of existing) {
-      if (idx < startIdx || idx > endIdx) {
-        virtualContent.removeChild(el);
-        existing.delete(idx);
-      }
-    }
-    for (let i = startIdx;i <= endIdx; i++) {
-      const existingEl = existing.get(i);
-      if (!existingEl)
-        continue;
-      const expectedKey = getVirtualItemKey(i);
-      const expectedSignature = getVirtualItemSignature(i);
-      if (existingEl.dataset.vkey !== expectedKey || existingEl.dataset.vsig !== expectedSignature) {
-        virtualContent.removeChild(existingEl);
-        existing.delete(i);
-      }
-    }
-    for (let i = startIdx;i <= endIdx; i++) {
-      if (!existing.has(i)) {
-        const el = isTypingPlaceholderIndex(i) ? createTypingPlaceholderElement() : createMessageElement(i);
-        el.dataset.vindex = String(i);
-        el.dataset.vkey = getVirtualItemKey(i);
-        el.dataset.vsig = getVirtualItemSignature(i);
-        let inserted = false;
-        for (const child of Array.from(virtualContent.children)) {
-          const childIdx = parseInt(child.dataset.vindex || "999999", 10);
-          if (childIdx > i) {
-            virtualContent.insertBefore(el, child);
-            inserted = true;
-            break;
-          }
-        }
-        if (!inserted) {
-          virtualContent.appendChild(el);
-        }
-      }
-    }
-    for (const child of Array.from(virtualContent.children)) {
-      const idx = parseInt(child.dataset.vindex || "-1", 10);
-      if (idx >= startIdx && idx <= endIdx) {
-        const key = child.dataset.vkey || getVirtualItemKey(idx);
-        msgHeightCache.set(key, child.offsetHeight);
-      }
-    }
-    virtualRange = { start: startIdx, end: endIdx };
-    if (shouldScrollToBottom) {
-      scrollToLatest("smooth");
     }
   }
-  let scrollRaf = null;
   messageList.addEventListener("scroll", () => {
-    isStickToBottom = messageList.scrollTop + messageList.clientHeight >= messageList.scrollHeight - 60;
-    if (scrollRaf)
-      cancelAnimationFrame(scrollRaf);
-    scrollRaf = requestAnimationFrame(() => {
-      syncVirtualWindow(false);
-    });
+    if (performance.now() < ignoreScrollTrackingUntil)
+      return;
+    isStickToBottom = messageList.scrollHeight - messageList.scrollTop - messageList.clientHeight <= 24;
   });
   const controls = document.createElement("div");
   controls.style.cssText = `
@@ -1486,7 +2320,7 @@ function setup(ctx) {
       isStickToBottom = true;
     }
     const shouldScroll = isUser || isStickToBottom;
-    syncVirtualWindow(shouldScroll);
+    refreshVirtualizer(shouldScroll, isUser ? "smooth" : "auto");
     if (isCollapsed) {
       unreadCount++;
       badge.textContent = unreadCount > 99 ? "99+" : String(unreadCount);
@@ -1507,7 +2341,7 @@ function setup(ctx) {
     msg.avatarUrl = avatarUrl;
     msg.clientMessageId = clientMessageId;
     if (changed) {
-      rerenderMessages(index === allMessages.length - 1 && isStickToBottom);
+      refreshVirtualizer(index === allMessages.length - 1 && isStickToBottom, "auto");
     }
   }
   function clearMessages() {
@@ -1520,7 +2354,7 @@ function setup(ctx) {
     currentGenerationRetryCandidateIndex = null;
     typingPlaceholderVisible = false;
     typingPlaceholderSpeakerName = null;
-    syncVirtualWindow(false);
+    refreshVirtualizer(false, "auto");
   }
   function loadHistory(history) {
     allMessages = [];
@@ -1547,8 +2381,7 @@ function setup(ctx) {
     typingPlaceholderVisible = false;
     typingPlaceholderSpeakerName = null;
     isStickToBottom = true;
-    messageList.scrollTop = 99999999;
-    syncVirtualWindow(false);
+    refreshVirtualizer(true, "auto");
   }
   const unsubBackend = ctx.onBackendMessage((payload) => {
     if (payload.type === "settings_loaded") {
@@ -1663,6 +2496,7 @@ function setup(ctx) {
       clearTimeout(autoTimer);
     window.removeEventListener("pointerdown", onWindowPointerDown, true);
     shellResizeObserver.disconnect();
+    destroyVirtualizer();
     unsubBackend();
     widget.destroy();
     tab.destroy();
