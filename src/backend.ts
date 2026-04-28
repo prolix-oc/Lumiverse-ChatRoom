@@ -49,6 +49,39 @@ interface PersistedChatroomSettings {
 
 const userStates = new Map<string, UserChatroomState>();
 const USER_SETTINGS_PATH = 'settings/chatroom.json';
+const MAX_SILENT_JUNK_RESTARTS = 2;
+const JUNK_LOOP_WINDOW_CHARS = 96;
+const JUNK_SINGLE_CHAR_THRESHOLD = 24;
+const JUNK_SEQUENCE_REPEAT_THRESHOLD = 8;
+
+function describeJunkLoopSuffix(text: string): string | null {
+  const compactText = text.replace(/\s+/g, '').slice(-JUNK_LOOP_WINDOW_CHARS);
+  if (compactText.length < JUNK_SINGLE_CHAR_THRESHOLD) return null;
+
+  const repeatedCharMatch = compactText.match(/([^A-Za-z0-9_])\1{23,}$/);
+  if (repeatedCharMatch) {
+    return `repeated ${JSON.stringify(repeatedCharMatch[1])} output`;
+  }
+
+  for (let unitSize = 2; unitSize <= 4; unitSize++) {
+    if (compactText.length < unitSize * JUNK_SEQUENCE_REPEAT_THRESHOLD) continue;
+
+    const unit = compactText.slice(-unitSize);
+    if (!unit || /[A-Za-z0-9]/.test(unit)) continue;
+
+    let repeats = 0;
+    for (let index = compactText.length - unitSize; index >= 0; index -= unitSize) {
+      if (compactText.slice(index, index + unitSize) !== unit) break;
+      repeats++;
+    }
+
+    if (repeats >= JUNK_SEQUENCE_REPEAT_THRESHOLD) {
+      return `repeated ${JSON.stringify(unit)} output`;
+    }
+  }
+
+  return null;
+}
 
 function getUserState(userId: string): UserChatroomState {
   if (!userStates.has(userId)) {
@@ -356,15 +389,13 @@ MemberName (Username): The message content
 
     spindle.sendToFrontend({ type: 'generation_started' }, resolvedUserId);
 
-    const stream = spindle.generate.quietStream({
-      type: 'quiet',
+    const generationInput = {
+      type: 'quiet' as const,
       connection_id: conn.id,
       messages: promptMessages,
       userId: resolvedUserId
-    });
+    };
 
-    let fullText = '';
-    let streamBuffer = '';
     let typingSpeaker: string | null = null;
 
     const setTypingSpeaker = (speakerName: string | null) => {
@@ -405,48 +436,105 @@ MemberName (Username): The message content
       }, resolvedUserId);
     };
 
-    const consumeText = async (text: string) => {
+    const consumeText = async (text: string, state: { fullText: string; streamBuffer: string }, abortForJunk: (reason: string) => never) => {
       if (!text) return;
 
-      fullText += text;
-      streamBuffer += text;
+      state.fullText += text;
 
-      let separatorIndex = streamBuffer.indexOf('---');
+      const junkReason = describeJunkLoopSuffix(state.fullText);
+      if (junkReason) {
+        abortForJunk(junkReason);
+      }
+
+      state.streamBuffer += text;
+
+      let separatorIndex = state.streamBuffer.indexOf('---');
       while (separatorIndex !== -1) {
-        const completedChunk = streamBuffer.slice(0, separatorIndex);
-        streamBuffer = streamBuffer.slice(separatorIndex + 3);
+        const completedChunk = state.streamBuffer.slice(0, separatorIndex);
+        state.streamBuffer = state.streamBuffer.slice(separatorIndex + 3);
         setTypingSpeaker(null);
         await flushChunk(completedChunk);
-        separatorIndex = streamBuffer.indexOf('---');
+        separatorIndex = state.streamBuffer.indexOf('---');
       }
 
-      setTypingSpeaker(detectTypingSpeaker(streamBuffer));
+      setTypingSpeaker(detectTypingSpeaker(state.streamBuffer));
     };
 
-    for await (const chunk of stream) {
-      if (chunk.type === 'token') {
-        await consumeText(chunk.token);
-      } else if (chunk.type === 'done') {
-        const finalContent = chunk.content || '';
-        if (!fullText && finalContent) {
-          await consumeText(finalContent);
-        } else if (finalContent.startsWith(fullText)) {
-          await consumeText(finalContent.slice(fullText.length));
+    let junkRestartCount = 0;
+
+    while (true) {
+      const attemptState = {
+        fullText: '',
+        streamBuffer: '',
+      };
+      const abortController = new AbortController();
+      const stream = spindle.generate.quietStream({
+        ...generationInput,
+        signal: abortController.signal,
+      });
+
+      const abortForJunk = (reason: string): never => {
+        const canRestartSilently = generatedResponseCount === 0 && junkRestartCount < MAX_SILENT_JUNK_RESTARTS;
+        const attemptNumber = junkRestartCount + 1;
+        const totalAttempts = MAX_SILENT_JUNK_RESTARTS + 1;
+        spindle.log.warn(
+          canRestartSilently
+            ? `Detected likely junk token loop before first completed message; restarting stream silently (attempt ${attemptNumber}/${totalAttempts}, ${reason}).`
+            : `Detected likely junk token loop; stopping current stream (attempt ${attemptNumber}/${totalAttempts}, ${reason}).`
+        );
+
+        abortController.abort();
+        const error = new Error(reason);
+        error.name = canRestartSilently ? 'JunkLoopRestartError' : 'JunkLoopStopError';
+        throw error;
+      };
+
+      try {
+        for await (const chunk of stream) {
+          if (chunk.type === 'token') {
+            await consumeText(chunk.token, attemptState, abortForJunk);
+          } else if (chunk.type === 'done') {
+            const finalContent = chunk.content || '';
+            if (!attemptState.fullText && finalContent) {
+              await consumeText(finalContent, attemptState, abortForJunk);
+            } else if (finalContent.startsWith(attemptState.fullText)) {
+              await consumeText(finalContent.slice(attemptState.fullText.length), attemptState, abortForJunk);
+            }
+          }
         }
+
+        spindle.log.info('Generation stream completed. Processing results...');
+        setTypingSpeaker(null);
+        await flushChunk(attemptState.streamBuffer);
+        break;
+      } catch (e: any) {
+        setTypingSpeaker(null);
+
+        if (e?.name === 'JunkLoopRestartError') {
+          junkRestartCount++;
+          continue;
+        }
+
+        if (e?.name === 'JunkLoopStopError' && generatedResponseCount > 0) {
+          spindle.log.warn('Keeping partial output after stopping a junk token loop.');
+          break;
+        }
+
+        throw e;
       }
     }
-
-    spindle.log.info('Generation stream completed. Processing results...');
-    setTypingSpeaker(null);
-    await flushChunk(streamBuffer);
 
     spindle.log.info('Successfully dispatched messages to frontend.');
     spindle.sendToFrontend({ type: 'generation_ended', failed: false, responseCount: generatedResponseCount }, resolvedUserId);
 
   } catch (e: any) {
-    spindle.log.error(`Generation error: ${e.message || String(e)}`);
+    const errorMessage = e?.name === 'JunkLoopStopError'
+      ? 'Model output became unstable and was stopped.'
+      : e.message || String(e);
+
+    spindle.log.error(`Generation error: ${errorMessage}`);
     spindle.sendToFrontend({ type: 'generation_ended', failed: true, responseCount: generatedResponseCount }, resolvedUserId);
-    spindle.sendToFrontend({ type: 'error', message: e.message || String(e) }, resolvedUserId);
+    spindle.sendToFrontend({ type: 'error', message: errorMessage }, resolvedUserId);
   } finally {
     state.isGenerating = false;
   }
