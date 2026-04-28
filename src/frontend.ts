@@ -651,6 +651,26 @@ export function setup(ctx: SpindleFrontendContext) {
     .chatroom-copy-btn:active { transform: scale(.96); }
     .chatroom-rich strong { font-weight: 700; }
     .chatroom-rich em { font-style: italic; }
+    .chatroom-inline-mention { color: var(--lumiverse-primary, #8c82ff); background: color-mix(in srgb, var(--lumiverse-primary, #8c82ff) 18%, transparent); border-radius: 6px; box-shadow: 0 0 0 2px color-mix(in srgb, var(--lumiverse-primary, #8c82ff) 18%, transparent); }
+    .chatroom-input-shell { position: relative; flex: 1; display: flex; align-items: flex-end; min-height: 40px; max-height: 112px; border-radius: 18px; overflow: hidden; transition: background .2s, box-shadow .2s, border-color .2s; }
+    .chatroom-input-shell:focus-within { box-shadow: inset 0 0 0 1px var(--lumiverse-border-hover), 0 0 0 2px color-mix(in srgb, var(--lumiverse-border-hover) 55%, transparent); }
+    .chatroom-textarea-mirror { position: absolute; inset: 0; box-sizing: border-box; padding: 10px 14px; color: transparent; -webkit-text-fill-color: transparent; font: inherit; line-height: 1.4; white-space: pre-wrap; overflow-wrap: anywhere; word-break: normal; overflow-y: auto; overflow-x: hidden; scrollbar-gutter: stable; pointer-events: none; user-select: none; z-index: 0; }
+    .chatroom-textarea-mirror::-webkit-scrollbar { width: 3px; }
+    .chatroom-textarea-mirror::-webkit-scrollbar-thumb, .chatroom-textarea-mirror::-webkit-scrollbar-track { background: transparent; }
+    .chatroom-mention-pill { background: color-mix(in srgb, var(--lumiverse-primary, rgba(140, 130, 255, 0.9)) 22%, transparent); border-radius: 4px; box-shadow: 0 0 0 2px color-mix(in srgb, var(--lumiverse-primary, rgba(140, 130, 255, 0.9)) 22%, transparent); }
+    .chatroom-textarea { position: relative; z-index: 1; flex: 1; resize: none; border: none; outline: none; background: transparent; color: var(--lumiverse-text); -webkit-text-fill-color: var(--lumiverse-text); caret-color: var(--lumiverse-text); padding: 10px 14px; min-height: 40px; max-height: 112px; overflow-y: auto; overflow-x: hidden; scrollbar-gutter: stable; font: inherit; line-height: 1.4; white-space: pre-wrap; overflow-wrap: anywhere; word-break: normal; }
+    .chatroom-textarea::placeholder { color: var(--lumiverse-text-dim); -webkit-text-fill-color: var(--lumiverse-text-dim); }
+    .chatroom-textarea::-webkit-scrollbar { width: 3px; }
+    .chatroom-textarea::-webkit-scrollbar-thumb { background: var(--lcs-scrollbar-thumb, rgba(255,255,255,0.15)); border-radius: 4px; }
+    .chatroom-mention-popover { display: none; flex-direction: column; gap: 4px; max-height: 188px; overflow-y: auto; padding: 8px; border: 1px solid var(--lumiverse-border); border-radius: 12px; background: color-mix(in srgb, var(--lumiverse-bg-elevated, var(--lumiverse-fill)) 92%, var(--lcs-glass-bg, transparent) 8%); box-shadow: 0 16px 36px rgba(0,0,0,0.22); }
+    .chatroom-mention-popover[data-open="true"] { display: flex; }
+    .chatroom-mention-option { border: 1px solid transparent; border-radius: 10px; background: transparent; color: var(--lumiverse-text); padding: 8px 10px; text-align: left; cursor: pointer; display: flex; align-items: center; gap: 10px; }
+    .chatroom-mention-option:hover, .chatroom-mention-option[data-active="true"] { background: var(--lumiverse-fill-subtle); border-color: var(--lumiverse-border); }
+    .chatroom-mention-avatar { width: 24px; height: 24px; border-radius: 999px; overflow: hidden; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; background: var(--lumiverse-fill-subtle); border: 1px solid var(--lumiverse-border); color: var(--lumiverse-text-dim); font-size: 10px; font-weight: 700; }
+    .chatroom-mention-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .chatroom-mention-meta { display: flex; flex-direction: column; min-width: 0; gap: 1px; }
+    .chatroom-mention-name { font-size: 12px; font-weight: 600; color: var(--lumiverse-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .chatroom-mention-slug { font-size: 11px; color: var(--lumiverse-text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   `);
 
   let autoTimer: any = null;
@@ -693,6 +713,7 @@ export function setup(ctx: SpindleFrontendContext) {
   let unreadCount = 0;
   let lastSenderId: string | null = null;
   let userPersona: { name: string; avatarUrl: string | null } | null = null;
+  let councilMembers: Array<{ name: string; avatarUrl: string | null; slug: string }> = [];
 
   function hashHue(str: string) {
     let h = 0;
@@ -704,6 +725,31 @@ export function setup(ctx: SpindleFrontendContext) {
     return `hsl(${hue}, 70%, 60%)`;
   }
 
+  function slugifyName(name: string) {
+    return name
+      .toLowerCase()
+      .normalize('NFKD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '');
+  }
+
+  function setCouncilMembers(nextMembers: Array<{ name: string; avatarUrl?: string | null }>) {
+    const deduped = new Map<string, { name: string; avatarUrl: string | null; slug: string }>();
+    for (const member of nextMembers) {
+      const name = typeof member?.name === 'string' ? member.name.trim() : '';
+      if (!name) continue;
+      const slug = slugifyName(name);
+      if (!slug || deduped.has(slug)) continue;
+      deduped.set(slug, {
+        name,
+        avatarUrl: member.avatarUrl || null,
+        slug,
+      });
+    }
+    councilMembers = Array.from(deduped.values());
+  }
+
   function escapeHtml(text: string) {
     return text
       .replace(/&/g, '&amp;')
@@ -713,11 +759,30 @@ export function setup(ctx: SpindleFrontendContext) {
       .replace(/'/g, '&#39;');
   }
 
+  function escapeRegExp(text: string) {
+    return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+
+  function highlightRenderedMentions(html: string) {
+    const candidateNames = new Set<string>();
+    if (userPersona?.name?.trim()) candidateNames.add(userPersona.name.trim());
+    for (const member of councilMembers) {
+      if (member.name.trim()) candidateNames.add(member.name.trim());
+    }
+
+    if (candidateNames.size === 0) return html;
+
+    const orderedNames = Array.from(candidateNames).sort((left, right) => right.length - left.length);
+    const pattern = new RegExp(`(^|[^\\w>])@(${orderedNames.map(escapeRegExp).join('|')})(?=$|[\\s.,!?;:<])`, 'g');
+    return html.replace(pattern, (_match, prefix: string, name: string) => `${prefix}<span class="chatroom-inline-mention">@${name}</span>`);
+  }
+
   function formatMessageContent(text: string) {
     let html = escapeHtml(text);
     html = html.replace(/\*\*\*([\s\S]+?)\*\*\*/g, '<strong><em>$1</em></strong>');
     html = html.replace(/\*\*([\s\S]+?)\*\*/g, '<strong>$1</strong>');
     html = html.replace(/\*([\s\S]+?)\*/g, '<em>$1</em>');
+    html = highlightRenderedMentions(html);
     return html.replace(/\n/g, '<br>');
   }
 
@@ -1691,24 +1756,44 @@ export function setup(ctx: SpindleFrontendContext) {
     background:var(--lumiverse-bg);display:flex;flex-direction:column;gap:10px;flex-shrink:0;
   `;
 
+  const mentionPopover = document.createElement('div');
+  mentionPopover.className = 'chatroom-mention-popover chatroom-scroll';
+
   const inputRow = document.createElement('div');
   inputRow.style.cssText = 'display:flex;gap:10px;align-items:flex-end;';
 
+  const inputShell = document.createElement('div');
+  inputShell.className = 'chatroom-input-shell';
+  inputShell.style.cssText = 'background:var(--lumiverse-fill-subtle);box-shadow:inset 0 0 0 1px var(--lumiverse-border);';
+
+  const mirrorLayer = document.createElement('div');
+  mirrorLayer.className = 'chatroom-textarea-mirror';
+  mirrorLayer.setAttribute('aria-hidden', 'true');
+
   const inputField = document.createElement('textarea');
   makeInteractive(inputField);
+  inputField.className = 'chatroom-textarea';
   inputField.placeholder = 'Type a message…';
   inputField.rows = 1;
   const INPUT_MAX_VISIBLE_LINES = 4;
   inputField.style.cssText = `
-    flex:1;padding:10px 14px;border:1px solid var(--lumiverse-border);
-    border-radius:18px;background:var(--lumiverse-fill-subtle);color:var(--lumiverse-text);
-    font-size:${isMobile ? 'var(--lcs-chat-input-font-size-mobile)' : 'var(--lcs-chat-input-font-size)'};outline:none;min-width:0;resize:none;
-    font-family:inherit;line-height:1.4;min-height:40px;overflow-y:hidden;
+    font-size:${isMobile ? 'var(--lcs-chat-input-font-size-mobile)' : 'var(--lcs-chat-input-font-size)'};min-width:0;
   `;
+
+  let inputIsComposing = false;
+  let mentionQuery: string | null = null;
+  let mentionStartIndex = 0;
+  let mentionActiveIndex = 0;
+  let mentionResults: Array<{ name: string; avatarUrl: string | null; slug: string }> = [];
 
   function resetInputHeight() {
     inputField.style.height = '40px';
     inputField.style.overflowY = 'hidden';
+    mirrorLayer.style.height = '40px';
+  }
+
+  function syncMirrorScroll() {
+    mirrorLayer.scrollTop = inputField.scrollTop;
   }
 
   function adjustInputHeight() {
@@ -1719,9 +1804,173 @@ export function setup(ctx: SpindleFrontendContext) {
     const nextHeight = Math.min(inputField.scrollHeight, maxHeight);
     inputField.style.height = `${nextHeight}px`;
     inputField.style.overflowY = inputField.scrollHeight > maxHeight ? 'auto' : 'hidden';
+    mirrorLayer.style.height = `${nextHeight}px`;
+    syncMirrorScroll();
+  }
+
+  function renderMirrorContent() {
+    const text = inputField.value;
+    const slugSet = new Set(councilMembers.map(member => member.slug));
+    const parts: string[] = [];
+    const pattern = /(^|\s)@([a-z0-9][a-z0-9-]*)(?=\s|$|[.,!?;:])/gi;
+    let lastIndex = 0;
+    let match: RegExpExecArray | null;
+
+    while ((match = pattern.exec(text)) !== null) {
+      const lead = match[1] || '';
+      const rawSlug = (match[2] || '').toLowerCase();
+      if (!slugSet.has(rawSlug)) continue;
+      const tagStart = match.index + lead.length;
+      const tagEnd = tagStart + 1 + rawSlug.length;
+      if (tagStart > lastIndex) {
+        parts.push(escapeHtml(text.slice(lastIndex, tagStart)));
+      }
+      parts.push(`<span class="chatroom-mention-pill">${escapeHtml(text.slice(tagStart, tagEnd))}</span>`);
+      lastIndex = tagEnd;
+    }
+
+    if (lastIndex < text.length) {
+      parts.push(escapeHtml(text.slice(lastIndex)));
+    }
+
+    parts.push('\u200B');
+    mirrorLayer.innerHTML = parts.join('');
+  }
+
+  function closeMentionPopover() {
+    mentionQuery = null;
+    mentionResults = [];
+    mentionActiveIndex = 0;
+    mentionPopover.dataset.open = 'false';
+    mentionPopover.replaceChildren();
+  }
+
+  function renderMentionPopover() {
+    if (mentionQuery == null || mentionResults.length === 0) {
+      closeMentionPopover();
+      return;
+    }
+
+    mentionPopover.dataset.open = 'true';
+    mentionPopover.replaceChildren();
+
+    mentionResults.forEach((member, index) => {
+      const option = document.createElement('button');
+      makeInteractive(option);
+      option.type = 'button';
+      option.className = 'chatroom-mention-option';
+      option.dataset.active = index === mentionActiveIndex ? 'true' : 'false';
+      option.addEventListener('mousedown', (event) => {
+        event.preventDefault();
+      });
+      option.addEventListener('click', () => {
+        insertMention(member);
+      });
+
+      const avatar = document.createElement('span');
+      avatar.className = 'chatroom-mention-avatar';
+      if (member.avatarUrl) {
+        avatar.innerHTML = `<img src="${escapeHtml(member.avatarUrl)}" alt="">`;
+      } else {
+        avatar.textContent = member.name.charAt(0).toUpperCase() || 'L';
+        avatar.style.background = memberColor(member.name);
+        avatar.style.color = 'white';
+      }
+
+      const meta = document.createElement('span');
+      meta.className = 'chatroom-mention-meta';
+
+      const name = document.createElement('span');
+      name.className = 'chatroom-mention-name';
+      name.textContent = member.name;
+
+      const slug = document.createElement('span');
+      slug.className = 'chatroom-mention-slug';
+      slug.textContent = `@${member.slug}`;
+
+      meta.appendChild(name);
+      meta.appendChild(slug);
+      option.appendChild(avatar);
+      option.appendChild(meta);
+      mentionPopover.appendChild(option);
+    });
+  }
+
+  function refreshMentionResults() {
+    if (mentionQuery == null) {
+      closeMentionPopover();
+      return;
+    }
+
+    const normalizedQuery = mentionQuery.toLowerCase();
+    mentionResults = councilMembers
+      .filter(member => !normalizedQuery || member.slug.includes(normalizedQuery) || member.name.toLowerCase().includes(normalizedQuery))
+      .sort((left, right) => {
+        const leftStarts = left.slug.startsWith(normalizedQuery) || left.name.toLowerCase().startsWith(normalizedQuery);
+        const rightStarts = right.slug.startsWith(normalizedQuery) || right.name.toLowerCase().startsWith(normalizedQuery);
+        if (leftStarts !== rightStarts) return leftStarts ? -1 : 1;
+        return left.name.localeCompare(right.name);
+      })
+      .slice(0, 6);
+
+    if (mentionResults.length === 0) {
+      closeMentionPopover();
+      return;
+    }
+
+    mentionActiveIndex = Math.max(0, Math.min(mentionActiveIndex, mentionResults.length - 1));
+    renderMentionPopover();
+  }
+
+  function runMentionDetection() {
+    const value = inputField.value;
+    const cursorPos = inputField.selectionStart ?? value.length;
+    const textBeforeCursor = value.slice(0, cursorPos);
+    const atIndex = textBeforeCursor.lastIndexOf('@');
+
+    if (atIndex < 0) {
+      closeMentionPopover();
+      return;
+    }
+
+    const charBefore = atIndex > 0 ? textBeforeCursor[atIndex - 1] : ' ';
+    if (atIndex !== 0 && !/\s/.test(charBefore)) {
+      closeMentionPopover();
+      return;
+    }
+
+    const fragment = textBeforeCursor.slice(atIndex + 1);
+    if (/[^a-z0-9-]/i.test(fragment)) {
+      closeMentionPopover();
+      return;
+    }
+
+    mentionQuery = fragment;
+    mentionStartIndex = atIndex;
+    mentionActiveIndex = 0;
+    refreshMentionResults();
+  }
+
+  function updateComposerDecorations() {
+    renderMirrorContent();
+    adjustInputHeight();
+  }
+
+  function insertMention(member: { name: string; avatarUrl: string | null; slug: string }) {
+    const value = inputField.value;
+    const selectionEnd = inputField.selectionEnd ?? value.length;
+    const nextValue = `${value.slice(0, mentionStartIndex)}@${member.slug} ${value.slice(selectionEnd)}`;
+    const nextCaret = mentionStartIndex + member.slug.length + 2;
+    inputField.value = nextValue;
+    inputField.setSelectionRange(nextCaret, nextCaret);
+    closeMentionPopover();
+    updateComposerDecorations();
+    inputField.focus();
   }
 
   resetInputHeight();
+  renderMirrorContent();
+  closeMentionPopover();
 
   const sendButton = document.createElement('button');
   makeInteractive(sendButton);
@@ -1735,8 +1984,11 @@ export function setup(ctx: SpindleFrontendContext) {
   sendButton.addEventListener('mouseenter', () => sendButton.style.opacity = '0.85');
   sendButton.addEventListener('mouseleave', () => sendButton.style.opacity = '1');
 
-  inputRow.appendChild(inputField);
+  inputShell.appendChild(mirrorLayer);
+  inputShell.appendChild(inputField);
+  inputRow.appendChild(inputShell);
   inputRow.appendChild(sendButton);
+  controls.appendChild(mentionPopover);
   controls.appendChild(inputRow);
 
   const toolsRow = document.createElement('div');
@@ -1802,12 +2054,12 @@ export function setup(ctx: SpindleFrontendContext) {
       ? 'var(--lcs-glass-border, var(--lumiverse-border))'
       : 'var(--lumiverse-border)';
 
-    inputField.style.background = glassEnabled
+    inputShell.style.background = glassEnabled
       ? 'color-mix(in srgb, var(--lumiverse-fill-subtle) 82%, var(--lcs-glass-bg, transparent) 18%)'
       : 'var(--lumiverse-fill-subtle)';
-    inputField.style.borderColor = glassEnabled
-      ? 'var(--lcs-glass-border, var(--lumiverse-border))'
-      : 'var(--lumiverse-border)';
+    inputShell.style.boxShadow = glassEnabled
+      ? 'inset 0 0 0 1px var(--lcs-glass-border, var(--lumiverse-border))'
+      : 'inset 0 0 0 1px var(--lumiverse-border)';
 
     genButton.style.background = glassEnabled
       ? 'color-mix(in srgb, var(--lumiverse-fill-subtle) 84%, var(--lcs-glass-bg, transparent) 16%)'
@@ -2060,27 +2312,93 @@ export function setup(ctx: SpindleFrontendContext) {
     }
   });
 
+  function normalizeOutgoingMentions(rawText: string) {
+    const slugToMember = new Map(councilMembers.map(member => [member.slug, member]));
+    const mentionedMemberNames: string[] = [];
+    const seen = new Set<string>();
+    const content = rawText.replace(/(^|\s)@([a-z0-9][a-z0-9-]*)(?=\s|$|[.,!?;:])/gi, (_match, lead: string, rawSlug: string) => {
+      const member = slugToMember.get(rawSlug.toLowerCase());
+      if (!member) return `${lead}@${rawSlug}`;
+      if (!seen.has(member.slug)) {
+        seen.add(member.slug);
+        mentionedMemberNames.push(member.name);
+      }
+      return `${lead}@${member.name}`;
+    });
+
+    return { content, mentionedMemberNames };
+  }
+
   const sendMessage = () => {
     if (isGenerating) return;
-    const text = inputField.value.trim();
-    if (!text) return;
+    const rawText = inputField.value.trim();
+    if (!rawText) return;
+    const { content, mentionedMemberNames } = normalizeOutgoingMentions(rawText);
     const clientMessageId = createLocalUserMessageId();
     inputField.value = '';
     inputField.rows = 1;
     resetInputHeight();
+    renderMirrorContent();
+    closeMentionPopover();
     appendMessage(
       userPersona?.name || 'You',
       userPersona?.name || 'You',
-      text,
+      content,
       userPersona?.avatarUrl || null,
       true,
       clientMessageId,
     );
-    ctx.sendToBackend({ type: 'user_message', content: text, clientMessageId });
+    ctx.sendToBackend({ type: 'user_message', content, clientMessageId, mentionedMemberNames });
   };
   sendButton.addEventListener('click', sendMessage);
-  inputField.addEventListener('input', adjustInputHeight);
+  inputField.addEventListener('input', () => {
+    updateComposerDecorations();
+    if (!inputIsComposing) {
+      runMentionDetection();
+    }
+  });
+  inputField.addEventListener('scroll', syncMirrorScroll);
+  inputField.addEventListener('compositionstart', () => {
+    inputIsComposing = true;
+  });
+  inputField.addEventListener('compositionend', () => {
+    inputIsComposing = false;
+    updateComposerDecorations();
+    runMentionDetection();
+  });
+  inputField.addEventListener('blur', () => {
+    window.setTimeout(() => {
+      if (document.activeElement !== inputField) {
+        closeMentionPopover();
+      }
+    }, 0);
+  });
   inputField.addEventListener('keydown', (e) => {
+    if (mentionQuery != null && mentionResults.length > 0) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        mentionActiveIndex = (mentionActiveIndex + 1) % mentionResults.length;
+        renderMentionPopover();
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        mentionActiveIndex = (mentionActiveIndex - 1 + mentionResults.length) % mentionResults.length;
+        renderMentionPopover();
+        return;
+      }
+      if (e.key === 'Enter' || e.key === 'Tab') {
+        e.preventDefault();
+        insertMention(mentionResults[mentionActiveIndex]);
+        return;
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        closeMentionPopover();
+        return;
+      }
+    }
+
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
   });
 
@@ -2243,6 +2561,12 @@ export function setup(ctx: SpindleFrontendContext) {
         userPersona = payload.userPersona;
       }
 
+      setCouncilMembers(Array.isArray(payload.councilMembers) ? payload.councilMembers : []);
+      renderMirrorContent();
+      if (mentionQuery != null) {
+        refreshMentionResults();
+      }
+
       chatroomNameInput.value = payload.chatroomName ?? '';
       headerTitle.textContent = payload.chatroomName?.trim() || 'Council Chatroom';
 
@@ -2293,6 +2617,11 @@ export function setup(ctx: SpindleFrontendContext) {
       autoToggle.checked = false;
     } else if (payload.type === 'chat_changed') {
       setWidgetVisible(true);
+      setCouncilMembers(Array.isArray(payload.councilMembers) ? payload.councilMembers : []);
+      renderMirrorContent();
+      if (mentionQuery != null) {
+        refreshMentionResults();
+      }
       headerTitle.textContent = payload.chatroomName?.trim() || 'Council Chatroom';
       if (payload.history && payload.history.length > 0) {
         loadHistory(payload.history);
