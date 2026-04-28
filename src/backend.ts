@@ -604,6 +604,35 @@ spindle.onFrontendMessage(async (payload: any, userId) => {
     return;
   }
 
+  if (payload.type === 'sync_active_chat') {
+    const state = getUserState(resolvedUserId);
+
+    let activeChatId: string | null = null;
+    try {
+      const activeChat = await spindle.chats.getActive(resolvedUserId);
+      activeChatId = activeChat ? activeChat.id : null;
+      state.currentChatId = activeChatId;
+    } catch {
+      state.currentChatId = null;
+    }
+
+    if (!activeChatId) {
+      spindle.sendToFrontend({ type: 'hide_widget' }, resolvedUserId);
+      return;
+    }
+
+    const settings = await loadPersistedSettings(resolvedUserId);
+    const history = await getChatroomHistory(activeChatId, resolvedUserId);
+    const chatroomName = settings.chatroomNames?.[activeChatId] ?? null;
+
+    spindle.sendToFrontend({
+      type: 'chat_changed',
+      history,
+      chatroomName: chatroomName || undefined,
+    }, resolvedUserId);
+    return;
+  }
+
   if (payload.type === 'user_message') {
     spindle.log.info('Received user_message trigger');
 

@@ -1550,8 +1550,12 @@ function setup(ctx) {
     }
   }
   function setWidgetVisible(visible) {
+    const wasRequestedVisible = requestedWidgetVisible;
     requestedWidgetVisible = visible;
     applyWidgetVisibility();
+    if (visible && !wasRequestedVisible && isInChatView()) {
+      ctx.sendToBackend({ type: "sync_active_chat" });
+    }
   }
   setWidgetVisible(false);
   const originalPushState = window.history.pushState.bind(window.history);

@@ -851,8 +851,13 @@ export function setup(ctx: SpindleFrontendContext) {
     }
   }
   function setWidgetVisible(visible: boolean) {
+    const wasRequestedVisible = requestedWidgetVisible;
     requestedWidgetVisible = visible;
     applyWidgetVisibility();
+
+    if (visible && !wasRequestedVisible && isInChatView()) {
+      ctx.sendToBackend({ type: 'sync_active_chat' });
+    }
   }
   setWidgetVisible(false);
 
