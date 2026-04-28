@@ -1034,13 +1034,15 @@ function setup(ctx) {
     });
     return sel;
   }
-  function createStyledNumberInput(min, max, value) {
+  function createStyledNumberInput(min, max, value, step) {
     const inp = document.createElement("input");
     makeInteractive(inp);
     inp.type = "number";
     inp.min = min;
     inp.max = max;
     inp.value = value;
+    if (step)
+      inp.step = step;
     inp.style.cssText = `
       width: 100px;
       padding: 6px 10px;
@@ -1059,6 +1061,13 @@ function setup(ctx) {
       inp.style.borderColor = "var(--lumiverse-border)";
     });
     return inp;
+  }
+  function parseOptionalNumber(value) {
+    const trimmed = value.trim();
+    if (!trimmed)
+      return null;
+    const parsed = Number(trimmed);
+    return Number.isFinite(parsed) ? parsed : null;
   }
   function createStyledTextInput(placeholder) {
     const inp = document.createElement("input");
@@ -1203,6 +1212,41 @@ function setup(ctx) {
   configCard.appendChild(createSettingRow("Context Retrieval (messages)", "How many recent story messages the council can see before reacting.", contextInput));
   const maxContextTokensInput = createStyledNumberInput("512", "32768", "4096");
   configCard.appendChild(createSettingRow("Max Context Tokens", "Maximum tokens the council chatroom history can consume. Older messages are removed automatically when this limit is exceeded.", maxContextTokensInput));
+  const advancedGenerationGroup = document.createElement("div");
+  advancedGenerationGroup.style.cssText = "display: flex; flex-direction: column; gap: 14px;";
+  const advancedGenerationHeader = document.createElement("div");
+  advancedGenerationHeader.textContent = "Advanced Generation";
+  advancedGenerationHeader.style.cssText = "padding-top: 6px; font-size: 12px; font-weight: 700; color: var(--lumiverse-text); letter-spacing: 0.04em; text-transform: uppercase;";
+  advancedGenerationGroup.appendChild(advancedGenerationHeader);
+  const temperatureInput = createStyledNumberInput("0", "2", "", "0.05");
+  temperatureInput.placeholder = "1";
+  advancedGenerationGroup.appendChild(createSettingRow("Temperature", "Higher values increase randomness. Leave blank to use the default of 1. A value of 0 omits temperature from the request.", temperatureInput));
+  const topPInput = createStyledNumberInput("0", "1", "", "0.01");
+  topPInput.placeholder = "0.95";
+  advancedGenerationGroup.appendChild(createSettingRow("Top P", "Nucleus sampling cutoff. Leave blank to use the default of 0.95. A value of 0 omits top_p from the request.", topPInput));
+  const topKWrap = document.createElement("div");
+  topKWrap.style.cssText = "display: flex; align-items: center; gap: 10px; flex-wrap: wrap;";
+  const topKEnabledCheckbox = document.createElement("input");
+  topKEnabledCheckbox.type = "checkbox";
+  makeInteractive(topKEnabledCheckbox);
+  const topKEnabledLabel = document.createElement("label");
+  topKEnabledLabel.textContent = "Include top_k";
+  topKEnabledLabel.style.cssText = "font-size: 12px; color: var(--lumiverse-text);";
+  const topKInput = createStyledNumberInput("0", "1000", "0");
+  topKWrap.appendChild(topKEnabledCheckbox);
+  topKWrap.appendChild(topKEnabledLabel);
+  topKWrap.appendChild(topKInput);
+  function updateTopKVisibility() {
+    topKInput.disabled = !topKEnabledCheckbox.checked;
+    topKInput.style.opacity = topKEnabledCheckbox.checked ? "1" : "0.5";
+  }
+  topKEnabledCheckbox.addEventListener("change", updateTopKVisibility);
+  updateTopKVisibility();
+  advancedGenerationGroup.appendChild(createSettingRow("Top K", "Enable to include top_k in the request. When enabled, 0 is allowed and sent as-is.", topKWrap));
+  const maxResponseTokensInput = createStyledNumberInput("1", "32768", "");
+  maxResponseTokensInput.placeholder = "8192";
+  advancedGenerationGroup.appendChild(createSettingRow("Max Response Tokens", "Maximum completion tokens to request. Leave blank to use the default of 8192.", maxResponseTokensInput));
+  configCard.appendChild(advancedGenerationGroup);
   const saveBtnWrap = document.createElement("div");
   saveBtnWrap.style.cssText = "display: flex; gap: 10px; padding-top: 8px;";
   const saveBtn = document.createElement("button");
@@ -1237,6 +1281,11 @@ function setup(ctx) {
       messageCountMax: parseInt(messageCountMaxInput.value, 10),
       contextLimit: parseInt(contextInput.value, 10),
       maxContextTokens: parseInt(maxContextTokensInput.value, 10),
+      temperature: parseOptionalNumber(temperatureInput.value),
+      topP: parseOptionalNumber(topPInput.value),
+      topKEnabled: topKEnabledCheckbox.checked,
+      topK: topKEnabledCheckbox.checked ? parseOptionalNumber(topKInput.value) ?? 0 : null,
+      maxResponseTokens: parseOptionalNumber(maxResponseTokensInput.value),
       connectionId: connectionSelect.value,
       chatroomName: chatroomNameInput.value.trim()
     });
@@ -2649,6 +2698,11 @@ function setup(ctx) {
       messageCountMaxInput.value = (payload.messageCountMax ?? 7).toString();
       contextInput.value = (payload.contextLimit ?? 10).toString();
       maxContextTokensInput.value = (payload.maxContextTokens ?? 4096).toString();
+      temperatureInput.value = payload.temperature != null ? payload.temperature.toString() : "";
+      topPInput.value = payload.topP != null ? payload.topP.toString() : "";
+      topKEnabledCheckbox.checked = payload.topKEnabled ?? false;
+      topKInput.value = (payload.topK ?? 0).toString();
+      maxResponseTokensInput.value = payload.maxResponseTokens != null ? payload.maxResponseTokens.toString() : "";
       triggerMode = payload.triggerMode ?? "time";
       messageInterval = payload.messageInterval ?? 10;
       randomIntervalEnabled = payload.randomIntervalEnabled ?? true;
@@ -2661,6 +2715,7 @@ function setup(ctx) {
       updateTriggerMode();
       updateTimeRangeVisibility();
       updateMessageCountRangeVisibility();
+      updateTopKVisibility();
       if (payload.userPersona) {
         userPersona = payload.userPersona;
       }

@@ -5,6 +5,9 @@ var MAX_SILENT_JUNK_RESTARTS = 2;
 var JUNK_LOOP_WINDOW_CHARS = 96;
 var JUNK_SINGLE_CHAR_THRESHOLD = 24;
 var JUNK_SEQUENCE_REPEAT_THRESHOLD = 8;
+var DEFAULT_TEMPERATURE = 1;
+var DEFAULT_TOP_P = 0.95;
+var DEFAULT_MAX_RESPONSE_TOKENS = 8192;
 function describeJunkLoopSuffix(text) {
   const compactText = text.replace(/\s+/g, "").slice(-JUNK_LOOP_WINDOW_CHARS);
   if (compactText.length < JUNK_SINGLE_CHAR_THRESHOLD)
@@ -30,6 +33,28 @@ function describeJunkLoopSuffix(text) {
     }
   }
   return null;
+}
+function isFiniteNumber(value) {
+  return typeof value === "number" && Number.isFinite(value);
+}
+function getGenerationParameters(settings) {
+  const parameters = {};
+  const temperature = settings.temperature ?? DEFAULT_TEMPERATURE;
+  const topP = settings.topP ?? DEFAULT_TOP_P;
+  const maxResponseTokens = settings.maxResponseTokens ?? DEFAULT_MAX_RESPONSE_TOKENS;
+  if (isFiniteNumber(temperature) && temperature > 0) {
+    parameters.temperature = temperature;
+  }
+  if (isFiniteNumber(topP) && topP > 0) {
+    parameters.top_p = topP;
+  }
+  if (settings.topKEnabled && isFiniteNumber(settings.topK) && settings.topK >= 0) {
+    parameters.top_k = settings.topK;
+  }
+  if (isFiniteNumber(maxResponseTokens) && maxResponseTokens > 0) {
+    parameters.max_tokens = maxResponseTokens;
+  }
+  return Object.keys(parameters).length > 0 ? parameters : undefined;
 }
 function getUserState(userId) {
   if (!userStates.has(userId)) {
@@ -279,10 +304,12 @@ MemberName (Username): The message content
       }
     }
     spindle.sendToFrontend({ type: "generation_started" }, resolvedUserId);
+    const generationParameters = getGenerationParameters(persistedSettings);
     const generationInput = {
       type: "quiet",
       connection_id: conn.id,
       messages: promptMessages,
+      parameters: generationParameters,
       userId: resolvedUserId
     };
     let typingSpeaker = null;
@@ -428,6 +455,11 @@ spindle.onFrontendMessage(async (payload, userId) => {
         intervalMax: payload.intervalMax ?? 15,
         contextLimit: payload.contextLimit ?? 10,
         maxContextTokens: payload.maxContextTokens ?? 4096,
+        temperature: typeof payload.temperature === "number" ? payload.temperature : null,
+        topP: typeof payload.topP === "number" ? payload.topP : null,
+        topKEnabled: payload.topKEnabled ?? false,
+        topK: typeof payload.topK === "number" ? payload.topK : 0,
+        maxResponseTokens: typeof payload.maxResponseTokens === "number" ? payload.maxResponseTokens : null,
         connectionId: payload.connectionId || "",
         triggerMode: payload.triggerMode || "time",
         messageCount: payload.messageCount ?? 5,
@@ -511,6 +543,11 @@ spindle.onFrontendMessage(async (payload, userId) => {
       messageCountMax: state.messageCountMax,
       contextLimit: settings.contextLimit ?? 10,
       maxContextTokens: settings.maxContextTokens ?? 4096,
+      temperature: settings.temperature ?? null,
+      topP: settings.topP ?? null,
+      topKEnabled: settings.topKEnabled ?? false,
+      topK: settings.topK ?? 0,
+      maxResponseTokens: settings.maxResponseTokens ?? null,
       connectionId: settings.connectionId || "",
       connections,
       history,
