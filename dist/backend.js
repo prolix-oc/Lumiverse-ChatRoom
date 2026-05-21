@@ -133,6 +133,20 @@ function shuffleArray(items) {
 async function getCouncilMembers(userId) {
   return spindle.council.getMembers({ userId });
 }
+async function resolveEffectivePersona(userId) {
+  const settings = await loadPersistedSettings(userId);
+  const overrideId = settings.personaId?.trim();
+  if (overrideId) {
+    try {
+      const overridden = await spindle.personas.get(overrideId, userId);
+      if (overridden)
+        return overridden;
+    } catch (e) {
+      spindle.log.warn(`Could not fetch overridden persona ${overrideId}; falling back to active persona.`);
+    }
+  }
+  return spindle.personas.getActive(userId);
+}
 function toGroupedChatroomTurns(messages) {
   const turns = [];
   let buffer = [];
@@ -216,8 +230,8 @@ async function runCouncilGeneration(userId, options = {}) {
       state.isGenerating = false;
       return;
     }
-    spindle.log.info("Fetching active persona...");
-    const activePersona = await spindle.personas.getActive(resolvedUserId);
+    spindle.log.info("Fetching effective persona...");
+    const activePersona = await resolveEffectivePersona(resolvedUserId);
     const personaName = activePersona?.name?.trim() || "the user";
     const councilContext = councilMembers.map((m) => `- ${m.name}: ${m.role}. Personality: ${m.personality}`).join("\\n");
     const councilMembersByName = new Map(councilMembers.map((member) => [member.name.toLowerCase(), member]));
@@ -503,7 +517,8 @@ spindle.onFrontendMessage(async (payload, userId) => {
         messageCount: payload.messageCount ?? 5,
         randomMessageCountEnabled: payload.randomMessageCountEnabled ?? true,
         messageCountMin: payload.messageCountMin ?? 3,
-        messageCountMax: payload.messageCountMax ?? 7
+        messageCountMax: payload.messageCountMax ?? 7,
+        personaId: typeof payload.personaId === "string" && payload.personaId.trim() ? payload.personaId.trim() : undefined
       };
       if (state.currentChatId) {
         next.chatroomNames = {
@@ -528,7 +543,7 @@ spindle.onFrontendMessage(async (payload, userId) => {
     }
     let userPersona = null;
     try {
-      const persona = await spindle.personas.getActive(resolvedUserId);
+      const persona = await resolveEffectivePersona(resolvedUserId);
       if (persona) {
         userPersona = {
           name: persona.name,
@@ -536,7 +551,19 @@ spindle.onFrontendMessage(async (payload, userId) => {
         };
       }
     } catch (e) {
-      spindle.log.warn("Could not fetch active persona for chatroom.");
+      spindle.log.warn("Could not fetch persona for chatroom.");
+    }
+    let personaList = [];
+    try {
+      const { data } = await spindle.personas.list({ userId: resolvedUserId });
+      personaList = data.map((p) => ({
+        id: p.id,
+        name: p.name,
+        title: p.title || "",
+        avatarUrl: p.image_id ? `/api/v1/images/${p.image_id}` : null
+      }));
+    } catch (e) {
+      spindle.log.warn("Could not list personas for chatroom settings.");
     }
     let councilMembers = [];
     try {
@@ -601,6 +628,8 @@ spindle.onFrontendMessage(async (payload, userId) => {
       councilMembers,
       hasActiveChat,
       userPersona,
+      personas: personaList,
+      personaId: settings.personaId ?? "",
       autoReply: state.autoReply,
       widgetX: settings.widgetX ?? null,
       widgetY: settings.widgetY ?? null,
@@ -660,13 +689,13 @@ spindle.onFrontendMessage(async (payload, userId) => {
     let personaName = "The User";
     let personaAvatar = null;
     try {
-      const activePersona = await spindle.personas.getActive(resolvedUserId);
+      const activePersona = await resolveEffectivePersona(resolvedUserId);
       if (activePersona) {
         personaName = activePersona.name;
         personaAvatar = activePersona.image_id ? `/api/v1/images/${activePersona.image_id}` : null;
       }
     } catch (e) {
-      spindle.log.warn("Could not fetch active persona for user message.");
+      spindle.log.warn("Could not fetch persona for user message.");
     }
     const activeChat = await spindle.chats.getActive(resolvedUserId);
     if (!activeChat) {

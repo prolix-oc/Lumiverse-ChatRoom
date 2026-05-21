@@ -6,13 +6,13 @@
       "name": "lumiverse-chatroom",
       "dependencies": {
         "@tanstack/virtual-core": "^3.14.0",
-        "lumiverse-spindle-types": "0.4.42",
+        "lumiverse-spindle-types": "0.5.5",
       },
     },
   },
   "packages": {
     "@tanstack/virtual-core": ["@tanstack/virtual-core@3.14.0", "", {}, "sha512-JLANqGy/D6k4Ujmh8Tr25lGimuOXNiaVyXaCAZS0W+1390sADdGnyUdSWNIfd49gebtIxGMij4IktRVzrdr12Q=="],
 
-    "lumiverse-spindle-types": ["lumiverse-spindle-types@0.4.42", "", {}, "sha512-71chZue/dY4EFobzEZZxrmYEof/RvImrxbGY0qTdMd0DhjTP3+oy37JswQlzXTS7k3WpvcBxyGCEvY3rQxUG0A=="],
+    "lumiverse-spindle-types": ["lumiverse-spindle-types@0.5.5", "", {}, "sha512-9ya91Ga1gZZNaB6Yrl9BTIfkpP49bALb96b2StEignI7ZXC/SqKI0u4/Oxv7Xch/4cl11GN7iVProgJ32nJ3/w=="],
   }
 }

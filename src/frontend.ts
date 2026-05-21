@@ -133,12 +133,17 @@ export function setup(ctx: SpindleFrontendContext) {
   configCard.appendChild(configHeader);
 
   // Chatroom Name (per-chat decorative)
-  const chatroomNameInput = createStyledTextInput('Council Chatroom');
+  const chatroomNameMount = document.createElement('div');
+  chatroomNameMount.style.cssText = 'width: 100%; max-width: 400px;';
   configCard.appendChild(createSettingRow(
     'Chatroom Name',
     'A custom name for this chatroom. Saved per-chat and shown in the widget header.',
-    chatroomNameInput
+    chatroomNameMount
   ));
+  const chatroomNameInput = ctx.components.mountTextInput(chatroomNameMount, {
+    value: '',
+    placeholder: 'Council Chatroom',
+  });
 
   // Helper for labeled input rows
   function createSettingRow(labelText: string, description: string, control: HTMLElement) {
@@ -165,152 +170,97 @@ export function setup(ctx: SpindleFrontendContext) {
     return row;
   }
 
-  // Helper for styled select
-  function createStyledSelect(): HTMLSelectElement {
-    const sel = document.createElement('select');
-    makeInteractive(sel);
-    sel.style.cssText = `
-      padding: 6px 10px;
-      border: 1px solid var(--lumiverse-border);
-      border-radius: var(--lumiverse-radius, 8px);
-      background: var(--lumiverse-fill-subtle);
-      color: var(--lumiverse-text);
-      font-size: 13px;
-      outline: none;
-      min-width: 240px;
-      cursor: pointer;
-      transition: border-color .15s;
-    `;
-    sel.addEventListener('focus', () => {
-      sel.style.borderColor = 'var(--lumiverse-primary)';
-    });
-    sel.addEventListener('blur', () => {
-      sel.style.borderColor = 'var(--lumiverse-border)';
-    });
-    return sel;
-  }
-
-  // Helper for styled number input
-  function createStyledNumberInput(min: string, max: string, value: string, step?: string): HTMLInputElement {
-    const inp = document.createElement('input');
-    makeInteractive(inp);
-    inp.type = 'number';
-    inp.min = min;
-    inp.max = max;
-    inp.value = value;
-    if (step) inp.step = step;
-    inp.style.cssText = `
-      width: 100px;
-      padding: 6px 10px;
-      border: 1px solid var(--lumiverse-border);
-      border-radius: var(--lumiverse-radius, 8px);
-      background: var(--lumiverse-fill-subtle);
-      color: var(--lumiverse-text);
-      font-size: 13px;
-      outline: none;
-      transition: border-color .15s;
-    `;
-    inp.addEventListener('focus', () => {
-      inp.style.borderColor = 'var(--lumiverse-primary)';
-    });
-    inp.addEventListener('blur', () => {
-      inp.style.borderColor = 'var(--lumiverse-border)';
-    });
-    return inp;
-  }
-
-  function parseOptionalNumber(value: string): number | null {
-    const trimmed = value.trim();
-    if (!trimmed) return null;
-    const parsed = Number(trimmed);
-    return Number.isFinite(parsed) ? parsed : null;
-  }
-
-  // Helper for styled text input
-  function createStyledTextInput(placeholder: string): HTMLInputElement {
-    const inp = document.createElement('input');
-    makeInteractive(inp);
-    inp.type = 'text';
-    inp.placeholder = placeholder;
-    inp.style.cssText = `
-      width: 100%;
-      max-width: 400px;
-      padding: 6px 10px;
-      border: 1px solid var(--lumiverse-border);
-      border-radius: var(--lumiverse-radius, 8px);
-      background: var(--lumiverse-fill-subtle);
-      color: var(--lumiverse-text);
-      font-size: 13px;
-      outline: none;
-      transition: border-color .15s;
-      box-sizing: border-box;
-    `;
-    inp.addEventListener('focus', () => {
-      inp.style.borderColor = 'var(--lumiverse-primary)';
-    });
-    inp.addEventListener('blur', () => {
-      inp.style.borderColor = 'var(--lumiverse-border)';
-    });
-    return inp;
-  }
-
   // Connection Profile
-  const connectionSelect = createStyledSelect();
-  connectionSelect.innerHTML = '<option value="">Default Active Connection</option>';
+  const connectionMount = document.createElement('div');
+  connectionMount.style.cssText = 'min-width: 260px; max-width: 400px;';
   configCard.appendChild(createSettingRow(
     'Generation Connection Profile',
     'The LLM connection used to generate council messages.',
-    connectionSelect
+    connectionMount
   ));
+  const connectionSelect = ctx.components.mountSelect(connectionMount, {
+    options: [],
+    value: '',
+    placeholder: 'Default Active Connection',
+    clearable: true,
+    clearLabel: 'Default Active Connection',
+    searchPlaceholder: 'Search connections…',
+    emptyMessage: 'No connections available.',
+    noResultsMessage: 'No connections match.',
+  });
+
+  // Persona Override (searchable popover with avatar leading)
+  const personaMount = document.createElement('div');
+  personaMount.style.cssText = 'min-width: 260px; max-width: 400px;';
+  configCard.appendChild(createSettingRow(
+    'Chatroom Persona',
+    'Persona used to represent you in the chatroom. Defaults to your currently active persona; pick another to override it just for this extension.',
+    personaMount
+  ));
+  const personaSelect = ctx.components.mountSelect(personaMount, {
+    options: [],
+    value: '',
+    placeholder: 'Use Active Persona',
+    clearable: true,
+    clearLabel: 'Use Active Persona',
+    searchPlaceholder: 'Search personas…',
+    searchThreshold: 0,
+    emptyMessage: 'No personas available.',
+    noResultsMessage: 'No personas match.',
+  });
+
 
   // Trigger Mode
-  const triggerModeSelect = createStyledSelect();
-  triggerModeSelect.innerHTML = `
-    <option value="time">Time-based (seconds)</option>
-    <option value="messages">Message-based (chat messages)</option>
-  `;
+  const triggerModeMount = document.createElement('div');
+  triggerModeMount.style.cssText = 'min-width: 260px; max-width: 400px;';
   configCard.appendChild(createSettingRow(
     'Auto-Reply Trigger',
     'Choose whether council auto-replies are triggered by elapsed time or by the number of story chat messages sent.',
-    triggerModeSelect
+    triggerModeMount
   ));
+  const triggerModeSelect = ctx.components.mountSelect(triggerModeMount, {
+    options: [
+      { value: 'time', label: 'Time-based (seconds)' },
+      { value: 'messages', label: 'Message-based (chat messages)' },
+    ],
+    value: 'time',
+    onChange: () => updateTriggerMode(),
+  });
 
   // Time-based settings group
   const timeSettingsGroup = document.createElement('div');
   timeSettingsGroup.style.cssText = 'display: flex; flex-direction: column; gap: 16px;';
 
   // Time Between Messages
-  const messageIntervalInput = createStyledNumberInput('1', '3600', '10');
+  const messageIntervalMount = document.createElement('div');
   timeSettingsGroup.appendChild(createSettingRow(
     'Time Between Messages (seconds)',
     'How long to wait before generating the next council message.',
-    messageIntervalInput
+    messageIntervalMount
   ));
+  const messageIntervalInput = ctx.components.mountNumericInput(messageIntervalMount, {
+    value: 10, min: 1, max: 3600, integer: true,
+  });
 
   // Random Interval Toggle
-  const randomToggleRow = document.createElement('div');
-  randomToggleRow.style.cssText = 'display: flex; align-items: center; gap: 10px; cursor: pointer; user-select: none; padding: 4px 0;';
-  const randomToggleCheckbox = document.createElement('input');
-  randomToggleCheckbox.type = 'checkbox';
-  randomToggleCheckbox.style.cssText = 'width: 16px; height: 16px; cursor: pointer; accent-color: var(--lumiverse-primary); flex-shrink: 0;';
-  const randomToggleLabel = document.createElement('span');
-  randomToggleLabel.textContent = 'Use Random Message Interval';
-  randomToggleLabel.style.cssText = 'font-size: 13px; font-weight: 500; color: var(--lumiverse-text);';
-  randomToggleRow.appendChild(randomToggleCheckbox);
-  randomToggleRow.appendChild(randomToggleLabel);
-  makeInteractive(randomToggleCheckbox);
+  const randomToggleMount = document.createElement('div');
   timeSettingsGroup.appendChild(createSettingRow(
     'Random Interval',
     'When enabled, the delay between messages varies randomly within the range below.',
-    randomToggleRow
+    randomToggleMount
   ));
+  const randomToggleCheckbox = ctx.components.mountCheckbox(randomToggleMount, {
+    checked: false,
+    label: 'Use Random Message Interval',
+    onChange: () => updateTimeRangeVisibility(),
+  });
 
   // Interval Range (min / max)
   const intervalRangeWrap = document.createElement('div');
-  intervalRangeWrap.style.cssText = 'display: flex; gap: 12px; align-items: center;';
+  intervalRangeWrap.style.cssText = 'display: flex; gap: 12px; align-items: flex-end;';
 
-  const intervalMinInput = createStyledNumberInput('1', '60', '5');
-  const intervalMaxInput = createStyledNumberInput('1', '120', '15');
+  const intervalMinMount = document.createElement('div');
+  const intervalMaxMount = document.createElement('div');
 
   const minWrap = document.createElement('div');
   minWrap.style.cssText = 'display: flex; flex-direction: column; gap: 4px;';
@@ -318,7 +268,7 @@ export function setup(ctx: SpindleFrontendContext) {
   minLabel.textContent = 'Min (s)';
   minLabel.style.cssText = 'font-size: 11px; font-weight: 600; color: var(--lumiverse-text-muted); text-transform: uppercase; letter-spacing: 0.03em;';
   minWrap.appendChild(minLabel);
-  minWrap.appendChild(intervalMinInput);
+  minWrap.appendChild(intervalMinMount);
 
   const maxWrap = document.createElement('div');
   maxWrap.style.cssText = 'display: flex; flex-direction: column; gap: 4px;';
@@ -326,11 +276,11 @@ export function setup(ctx: SpindleFrontendContext) {
   maxLabel.textContent = 'Max (s)';
   maxLabel.style.cssText = 'font-size: 11px; font-weight: 600; color: var(--lumiverse-text-muted); text-transform: uppercase; letter-spacing: 0.03em;';
   maxWrap.appendChild(maxLabel);
-  maxWrap.appendChild(intervalMaxInput);
+  maxWrap.appendChild(intervalMaxMount);
 
   const rangeArrow = document.createElement('span');
   rangeArrow.textContent = '→';
-  rangeArrow.style.cssText = 'color: var(--lumiverse-text-dim); font-size: 12px; padding-top: 18px; font-weight: 500;';
+  rangeArrow.style.cssText = 'color: var(--lumiverse-text-dim); font-size: 12px; padding-bottom: 6px; font-weight: 500;';
 
   intervalRangeWrap.appendChild(minWrap);
   intervalRangeWrap.appendChild(rangeArrow);
@@ -344,42 +294,47 @@ export function setup(ctx: SpindleFrontendContext) {
   timeSettingsGroup.appendChild(rangeRow);
   configCard.appendChild(timeSettingsGroup);
 
+  const intervalMinInput = ctx.components.mountNumericInput(intervalMinMount, {
+    value: 5, min: 1, max: 60, integer: true,
+  });
+  const intervalMaxInput = ctx.components.mountNumericInput(intervalMaxMount, {
+    value: 15, min: 1, max: 120, integer: true,
+  });
+
   // Message-based settings group
   const messagesSettingsGroup = document.createElement('div');
   messagesSettingsGroup.style.cssText = 'display: none; flex-direction: column; gap: 16px;';
 
   // Messages Between Responses
-  const messageCountInput = createStyledNumberInput('1', '100', '5');
+  const messageCountMount = document.createElement('div');
   messagesSettingsGroup.appendChild(createSettingRow(
     'Messages Between Responses',
     'How many story chat messages must be sent before the council auto-replies.',
-    messageCountInput
+    messageCountMount
   ));
+  const messageCountInput = ctx.components.mountNumericInput(messageCountMount, {
+    value: 5, min: 1, max: 100, integer: true,
+  });
 
   // Random Message Count Toggle
-  const randomMessageCountRow = document.createElement('div');
-  randomMessageCountRow.style.cssText = 'display: flex; align-items: center; gap: 10px; cursor: pointer; user-select: none; padding: 4px 0;';
-  const randomMessageCountCheckbox = document.createElement('input');
-  randomMessageCountCheckbox.type = 'checkbox';
-  randomMessageCountCheckbox.style.cssText = 'width: 16px; height: 16px; cursor: pointer; accent-color: var(--lumiverse-primary); flex-shrink: 0;';
-  const randomMessageCountLabel = document.createElement('span');
-  randomMessageCountLabel.textContent = 'Use Random Message Count';
-  randomMessageCountLabel.style.cssText = 'font-size: 13px; font-weight: 500; color: var(--lumiverse-text);';
-  randomMessageCountRow.appendChild(randomMessageCountCheckbox);
-  randomMessageCountRow.appendChild(randomMessageCountLabel);
-  makeInteractive(randomMessageCountCheckbox);
+  const randomMessageCountMount = document.createElement('div');
   messagesSettingsGroup.appendChild(createSettingRow(
     'Random Message Count',
     'When enabled, the number of messages required varies randomly within the range below.',
-    randomMessageCountRow
+    randomMessageCountMount
   ));
+  const randomMessageCountCheckbox = ctx.components.mountCheckbox(randomMessageCountMount, {
+    checked: false,
+    label: 'Use Random Message Count',
+    onChange: () => updateMessageCountRangeVisibility(),
+  });
 
   // Message Count Range (min / max)
   const messageCountRangeWrap = document.createElement('div');
-  messageCountRangeWrap.style.cssText = 'display: flex; gap: 12px; align-items: center;';
+  messageCountRangeWrap.style.cssText = 'display: flex; gap: 12px; align-items: flex-end;';
 
-  const messageCountMinInput = createStyledNumberInput('1', '100', '3');
-  const messageCountMaxInput = createStyledNumberInput('1', '100', '7');
+  const messageCountMinMount = document.createElement('div');
+  const messageCountMaxMount = document.createElement('div');
 
   const msgMinWrap = document.createElement('div');
   msgMinWrap.style.cssText = 'display: flex; flex-direction: column; gap: 4px;';
@@ -387,7 +342,7 @@ export function setup(ctx: SpindleFrontendContext) {
   msgMinLabel.textContent = 'Min';
   msgMinLabel.style.cssText = 'font-size: 11px; font-weight: 600; color: var(--lumiverse-text-muted); text-transform: uppercase; letter-spacing: 0.03em;';
   msgMinWrap.appendChild(msgMinLabel);
-  msgMinWrap.appendChild(messageCountMinInput);
+  msgMinWrap.appendChild(messageCountMinMount);
 
   const msgMaxWrap = document.createElement('div');
   msgMaxWrap.style.cssText = 'display: flex; flex-direction: column; gap: 4px;';
@@ -395,11 +350,11 @@ export function setup(ctx: SpindleFrontendContext) {
   msgMaxLabel.textContent = 'Max';
   msgMaxLabel.style.cssText = 'font-size: 11px; font-weight: 600; color: var(--lumiverse-text-muted); text-transform: uppercase; letter-spacing: 0.03em;';
   msgMaxWrap.appendChild(msgMaxLabel);
-  msgMaxWrap.appendChild(messageCountMaxInput);
+  msgMaxWrap.appendChild(messageCountMaxMount);
 
   const msgRangeArrow = document.createElement('span');
   msgRangeArrow.textContent = '→';
-  msgRangeArrow.style.cssText = 'color: var(--lumiverse-text-dim); font-size: 12px; padding-top: 18px; font-weight: 500;';
+  msgRangeArrow.style.cssText = 'color: var(--lumiverse-text-dim); font-size: 12px; padding-bottom: 6px; font-weight: 500;';
 
   messageCountRangeWrap.appendChild(msgMinWrap);
   messageCountRangeWrap.appendChild(msgRangeArrow);
@@ -413,45 +368,55 @@ export function setup(ctx: SpindleFrontendContext) {
   messagesSettingsGroup.appendChild(messageCountRangeRow);
   configCard.appendChild(messagesSettingsGroup);
 
+  const messageCountMinInput = ctx.components.mountNumericInput(messageCountMinMount, {
+    value: 3, min: 1, max: 100, integer: true,
+  });
+  const messageCountMaxInput = ctx.components.mountNumericInput(messageCountMaxMount, {
+    value: 7, min: 1, max: 100, integer: true,
+  });
+
   // Show/hide time range row based on toggle
   function updateTimeRangeVisibility() {
-    rangeRow.style.display = randomToggleCheckbox.checked ? 'flex' : 'none';
-    messageIntervalInput.disabled = randomToggleCheckbox.checked;
-    messageIntervalInput.style.opacity = randomToggleCheckbox.checked ? '0.5' : '1';
+    const enabled = randomToggleCheckbox.getValue();
+    rangeRow.style.display = enabled ? 'flex' : 'none';
+    messageIntervalInput.update({ disabled: enabled });
   }
-  randomToggleCheckbox.addEventListener('change', updateTimeRangeVisibility);
 
   // Show/hide message count range row based on toggle
   function updateMessageCountRangeVisibility() {
-    messageCountRangeRow.style.display = randomMessageCountCheckbox.checked ? 'flex' : 'none';
-    messageCountInput.disabled = randomMessageCountCheckbox.checked;
-    messageCountInput.style.opacity = randomMessageCountCheckbox.checked ? '0.5' : '1';
+    const enabled = randomMessageCountCheckbox.getValue();
+    messageCountRangeRow.style.display = enabled ? 'flex' : 'none';
+    messageCountInput.update({ disabled: enabled });
   }
-  randomMessageCountCheckbox.addEventListener('change', updateMessageCountRangeVisibility);
 
   // Show/hide settings groups based on trigger mode
   function updateTriggerMode() {
-    const isTime = triggerModeSelect.value === 'time';
+    const isTime = triggerModeSelect.getValue() === 'time';
     timeSettingsGroup.style.display = isTime ? 'flex' : 'none';
     messagesSettingsGroup.style.display = isTime ? 'none' : 'flex';
   }
-  triggerModeSelect.addEventListener('change', updateTriggerMode);
 
   // Context Retrieval
-  const contextInput = createStyledNumberInput('1', '50', '10');
+  const contextMount = document.createElement('div');
   configCard.appendChild(createSettingRow(
     'Context Retrieval (messages)',
     'How many recent story messages the council can see before reacting.',
-    contextInput
+    contextMount
   ));
+  const contextInput = ctx.components.mountNumericInput(contextMount, {
+    value: 10, min: 1, max: 50, integer: true,
+  });
 
   // Max Context Tokens
-  const maxContextTokensInput = createStyledNumberInput('512', '32768', '4096');
+  const maxContextTokensMount = document.createElement('div');
   configCard.appendChild(createSettingRow(
     'Max Context Tokens',
     'Maximum tokens the council chatroom history can consume. Older messages are removed automatically when this limit is exceeded.',
-    maxContextTokensInput
+    maxContextTokensMount
   ));
+  const maxContextTokensInput = ctx.components.mountNumericInput(maxContextTokensMount, {
+    value: 4096, min: 512, max: 32768, integer: true,
+  });
 
   const advancedGenerationGroup = document.createElement('div');
   advancedGenerationGroup.style.cssText = 'display: flex; flex-direction: column; gap: 14px;';
@@ -461,46 +426,33 @@ export function setup(ctx: SpindleFrontendContext) {
   advancedGenerationHeader.style.cssText = 'padding-top: 6px; font-size: 12px; font-weight: 700; color: var(--lumiverse-text); letter-spacing: 0.04em; text-transform: uppercase;';
   advancedGenerationGroup.appendChild(advancedGenerationHeader);
 
-  const temperatureInput = createStyledNumberInput('0', '2', '', '0.05');
-  temperatureInput.placeholder = '1';
+  const temperatureMount = document.createElement('div');
   advancedGenerationGroup.appendChild(createSettingRow(
     'Temperature',
     'Higher values increase randomness. Leave blank to use the default of 1. A value of 0 omits temperature from the request.',
-    temperatureInput
+    temperatureMount
   ));
+  const temperatureInput = ctx.components.mountNumericInput(temperatureMount, {
+    value: null, min: 0, max: 2, step: 0.05, allowEmpty: true, placeholder: '1',
+  });
 
-  const topPInput = createStyledNumberInput('0', '1', '', '0.01');
-  topPInput.placeholder = '0.95';
+  const topPMount = document.createElement('div');
   advancedGenerationGroup.appendChild(createSettingRow(
     'Top P',
     'Nucleus sampling cutoff. Leave blank to use the default of 0.95. A value of 0 omits top_p from the request.',
-    topPInput
+    topPMount
   ));
+  const topPInput = ctx.components.mountNumericInput(topPMount, {
+    value: null, min: 0, max: 1, step: 0.01, allowEmpty: true, placeholder: '0.95',
+  });
 
   const topKWrap = document.createElement('div');
-  topKWrap.style.cssText = 'display: flex; align-items: center; gap: 10px; flex-wrap: wrap;';
+  topKWrap.style.cssText = 'display: flex; align-items: center; gap: 12px; flex-wrap: wrap;';
 
-  const topKEnabledCheckbox = document.createElement('input');
-  topKEnabledCheckbox.type = 'checkbox';
-  makeInteractive(topKEnabledCheckbox);
-
-  const topKEnabledLabel = document.createElement('label');
-  topKEnabledLabel.textContent = 'Include top_k';
-  topKEnabledLabel.style.cssText = 'font-size: 12px; color: var(--lumiverse-text);';
-
-  const topKInput = createStyledNumberInput('0', '1000', '0');
-
-  topKWrap.appendChild(topKEnabledCheckbox);
-  topKWrap.appendChild(topKEnabledLabel);
-  topKWrap.appendChild(topKInput);
-
-  function updateTopKVisibility() {
-    topKInput.disabled = !topKEnabledCheckbox.checked;
-    topKInput.style.opacity = topKEnabledCheckbox.checked ? '1' : '0.5';
-  }
-
-  topKEnabledCheckbox.addEventListener('change', updateTopKVisibility);
-  updateTopKVisibility();
+  const topKEnabledMount = document.createElement('div');
+  const topKInputMount = document.createElement('div');
+  topKWrap.appendChild(topKEnabledMount);
+  topKWrap.appendChild(topKInputMount);
 
   advancedGenerationGroup.appendChild(createSettingRow(
     'Top K',
@@ -508,13 +460,29 @@ export function setup(ctx: SpindleFrontendContext) {
     topKWrap
   ));
 
-  const maxResponseTokensInput = createStyledNumberInput('1', '32768', '');
-  maxResponseTokensInput.placeholder = '8192';
+  const topKEnabledCheckbox = ctx.components.mountCheckbox(topKEnabledMount, {
+    checked: false,
+    label: 'Include top_k',
+    onChange: () => updateTopKVisibility(),
+  });
+  const topKInput = ctx.components.mountNumericInput(topKInputMount, {
+    value: 0, min: 0, max: 1000, integer: true,
+  });
+
+  function updateTopKVisibility() {
+    topKInput.update({ disabled: !topKEnabledCheckbox.getValue() });
+  }
+  updateTopKVisibility();
+
+  const maxResponseTokensMount = document.createElement('div');
   advancedGenerationGroup.appendChild(createSettingRow(
     'Max Response Tokens',
     'Maximum completion tokens to request. Leave blank to use the default of 8192.',
-    maxResponseTokensInput
+    maxResponseTokensMount
   ));
+  const maxResponseTokensInput = ctx.components.mountNumericInput(maxResponseTokensMount, {
+    value: null, min: 1, max: 32768, integer: true, allowEmpty: true, placeholder: '8192',
+  });
 
   configCard.appendChild(advancedGenerationGroup);
 
@@ -541,26 +509,28 @@ export function setup(ctx: SpindleFrontendContext) {
   saveBtn.addEventListener('mousedown', () => saveBtn.style.transform = 'scale(0.97)');
   saveBtn.addEventListener('mouseup', () => saveBtn.style.transform = 'none');
   saveBtn.addEventListener('click', () => {
+    const topKOn = topKEnabledCheckbox.getValue();
     ctx.sendToBackend({
       type: 'save_settings',
-      triggerMode: triggerModeSelect.value,
-      messageInterval: parseInt(messageIntervalInput.value, 10),
-      randomIntervalEnabled: randomToggleCheckbox.checked,
-      intervalMin: parseInt(intervalMinInput.value, 10),
-      intervalMax: parseInt(intervalMaxInput.value, 10),
-      messageCount: parseInt(messageCountInput.value, 10),
-      randomMessageCountEnabled: randomMessageCountCheckbox.checked,
-      messageCountMin: parseInt(messageCountMinInput.value, 10),
-      messageCountMax: parseInt(messageCountMaxInput.value, 10),
-      contextLimit: parseInt(contextInput.value, 10),
-      maxContextTokens: parseInt(maxContextTokensInput.value, 10),
-      temperature: parseOptionalNumber(temperatureInput.value),
-      topP: parseOptionalNumber(topPInput.value),
-      topKEnabled: topKEnabledCheckbox.checked,
-      topK: topKEnabledCheckbox.checked ? (parseOptionalNumber(topKInput.value) ?? 0) : null,
-      maxResponseTokens: parseOptionalNumber(maxResponseTokensInput.value),
-      connectionId: connectionSelect.value,
-      chatroomName: chatroomNameInput.value.trim()
+      triggerMode: triggerModeSelect.getValue(),
+      messageInterval: messageIntervalInput.getValue() ?? 10,
+      randomIntervalEnabled: randomToggleCheckbox.getValue(),
+      intervalMin: intervalMinInput.getValue() ?? 5,
+      intervalMax: intervalMaxInput.getValue() ?? 15,
+      messageCount: messageCountInput.getValue() ?? 5,
+      randomMessageCountEnabled: randomMessageCountCheckbox.getValue(),
+      messageCountMin: messageCountMinInput.getValue() ?? 3,
+      messageCountMax: messageCountMaxInput.getValue() ?? 7,
+      contextLimit: contextInput.getValue() ?? 10,
+      maxContextTokens: maxContextTokensInput.getValue() ?? 4096,
+      temperature: temperatureInput.getValue(),
+      topP: topPInput.getValue(),
+      topKEnabled: topKOn,
+      topK: topKOn ? (topKInput.getValue() ?? 0) : null,
+      maxResponseTokens: maxResponseTokensInput.getValue(),
+      connectionId: connectionSelect.getValue(),
+      personaId: personaSelect.getValue(),
+      chatroomName: chatroomNameInput.getValue().trim(),
     });
   });
 
@@ -839,19 +809,24 @@ export function setup(ctx: SpindleFrontendContext) {
     sizedWidget.setSize?.(width, height);
   }
 
-  function restoreSaneWidgetDefaults() {
+  const userWidgetState: { x: number | null; y: number | null; w: number | null; h: number | null } = {
+    x: null, y: null, w: null, h: null,
+  };
+
+  function restoreUserWidgetState() {
     if (syncFullscreenStateFromHost()) {
       fsBtn.click();
     }
     const defaults = getDefaultWidgetSize();
     const pos = getDefaultWidgetPosition();
-    expandedHeight = defaults.height;
-    setWidgetSize(defaults.width, isCollapsed ? header.offsetHeight : defaults.height);
-    widget.moveTo(pos.x, pos.y);
-    requestAnimationFrame(() => {
-      clampWidgetToViewport();
-      persistWidgetState();
-    });
+    const w = userWidgetState.w ?? defaults.width;
+    const h = userWidgetState.h ?? defaults.height;
+    const x = userWidgetState.x ?? pos.x;
+    const y = userWidgetState.y ?? pos.y;
+    expandedHeight = h;
+    setWidgetSize(w, isCollapsed ? header.offsetHeight : h);
+    widget.moveTo(x, y);
+    requestAnimationFrame(() => clampWidgetToViewport());
   }
 
   function resetWidgetToSaneDefaults() {
@@ -973,11 +948,13 @@ export function setup(ctx: SpindleFrontendContext) {
         shell.style.opacity = '1';
         shell.style.transform = 'translateY(0) scale(1)';
       });
-      // Recover from hosts that squash the shell to 2×2px when hidden
+      // Recover from hosts that squash the shell to 2×2px when hidden.
+      // Restore to the user's last-known position/size, not defaults — otherwise
+      // we trample the position whenever this fires on a normal chat switch.
       const w = shell.offsetWidth;
       const h = shell.offsetHeight;
       if (w < 50 || h < 50) {
-        restoreSaneWidgetDefaults();
+        restoreUserWidgetState();
         syncHostWrapperSize();
       }
     } else {
@@ -1030,7 +1007,7 @@ export function setup(ctx: SpindleFrontendContext) {
         syncHostWrapperSize();
       }
       if (w < 50 || h < 50) {
-        restoreSaneWidgetDefaults();
+        restoreUserWidgetState();
         syncHostWrapperSize();
       }
     }
@@ -1042,6 +1019,10 @@ export function setup(ctx: SpindleFrontendContext) {
     if (isMobile) return;
     const pos = widget.getPosition();
     const persistedHeight = isCollapsed ? expandedHeight : shell.offsetHeight;
+    userWidgetState.x = pos.x;
+    userWidgetState.y = pos.y;
+    userWidgetState.w = shell.offsetWidth;
+    userWidgetState.h = persistedHeight;
     ctx.sendToBackend({
       type: 'save_widget_state',
       x: pos.x,
@@ -1081,6 +1062,67 @@ export function setup(ctx: SpindleFrontendContext) {
   widget.onDragEnd(() => {
     clampWidgetToViewport();
     persistWidgetState();
+  });
+
+  // ── Soft-keyboard handling ──
+  // When the on-screen keyboard appears, shrink (and shift if needed) the
+  // widget so the input bar stays above the keyboard. Restore on dismiss
+  // without persisting — the saved widget state stays as the user left it.
+  let keyboardAdjustment: { x: number; y: number; w: number; h: number } | null = null;
+  const KEYBOARD_TOP_PAD = 8;
+  const KEYBOARD_GAP = 8;
+  const KEYBOARD_MIN_HEIGHT = 220;
+
+  function applyKeyboardAdjustment(insetBottom: number, viewportHeight: number) {
+    const pos = widget.getPosition();
+    const currentW = shell.offsetWidth;
+    const currentH = shell.offsetHeight;
+    if (keyboardAdjustment == null) {
+      keyboardAdjustment = { x: pos.x, y: pos.y, w: currentW, h: currentH };
+    }
+    const keyboardTop = viewportHeight - insetBottom;
+    const desiredBottom = keyboardTop - KEYBOARD_GAP;
+    const baseY = keyboardAdjustment.y;
+    const baseH = keyboardAdjustment.h;
+
+    let targetY = baseY;
+    let targetH = baseH;
+    if (baseY + baseH > desiredBottom) {
+      const shrinkOnly = desiredBottom - baseY;
+      if (shrinkOnly >= KEYBOARD_MIN_HEIGHT) {
+        targetH = shrinkOnly;
+      } else {
+        targetH = Math.max(KEYBOARD_MIN_HEIGHT, Math.min(baseH, desiredBottom - KEYBOARD_TOP_PAD));
+        targetY = Math.max(KEYBOARD_TOP_PAD, desiredBottom - targetH);
+      }
+    }
+
+    if (targetH !== currentH || pos.y !== targetY) {
+      setWidgetSize(currentW, targetH);
+      widget.moveTo(pos.x, targetY);
+      syncHostWrapperSize();
+    }
+  }
+
+  function clearKeyboardAdjustment() {
+    if (keyboardAdjustment == null) return;
+    const snapshot = keyboardAdjustment;
+    keyboardAdjustment = null;
+    setWidgetSize(snapshot.w, snapshot.h);
+    widget.moveTo(snapshot.x, snapshot.y);
+    syncHostWrapperSize();
+  }
+
+  const unsubKeyboard = ctx.ui.events.onKeyboardChange((state) => {
+    if (isFullscreen) {
+      clearKeyboardAdjustment();
+      return;
+    }
+    if (state.visible && state.insetBottom > 0 && widgetVisible) {
+      applyKeyboardAdjustment(state.insetBottom, state.viewportHeight);
+    } else {
+      clearKeyboardAdjustment();
+    }
   });
 
   // ── Header ──
@@ -1247,6 +1289,13 @@ export function setup(ctx: SpindleFrontendContext) {
       opacity var(--lcs-chat-widget-transition-fast, ${WIDGET_TRANSITION_FAST}),
       transform var(--lcs-chat-widget-transition-fast, ${WIDGET_TRANSITION_FAST});
   `;
+
+  // Prevent the host's float-widget drag from initiating on body taps —
+  // drag is reserved for the header only.
+  const stopDragInit = (e: Event) => e.stopPropagation();
+  body.addEventListener('mousedown', stopDragInit, false);
+  body.addEventListener('pointerdown', stopDragInit, false);
+  body.addEventListener('touchstart', stopDragInit, { passive: true, capture: false });
 
   const messageList = document.createElement('div');
   messageList.className = 'chatroom-scroll';
@@ -1994,13 +2043,23 @@ export function setup(ctx: SpindleFrontendContext) {
   const toolsRow = document.createElement('div');
   toolsRow.style.cssText = 'display:flex;justify-content:space-between;align-items:center;';
 
-  const autoToggleLabel = document.createElement('label');
-  autoToggleLabel.style.cssText = 'display:flex;gap:8px;font-size:13px;color:var(--lumiverse-text-dim);align-items:center;cursor:pointer;user-select:none;';
-  const autoToggle = document.createElement('input');
-  autoToggle.type = 'checkbox';
-  autoToggle.style.cssText = 'width:16px;height:16px;cursor:pointer;accent-color:var(--lumiverse-primary);';
-  autoToggleLabel.appendChild(autoToggle);
+  const autoToggleLabel = document.createElement('div');
+  autoToggleLabel.style.cssText = 'display:flex;gap:8px;font-size:13px;color:var(--lumiverse-text-dim);align-items:center;user-select:none;';
+  const autoToggleMount = document.createElement('div');
+  autoToggleLabel.appendChild(autoToggleMount);
   autoToggleLabel.appendChild(document.createTextNode('Auto-reply'));
+  const autoToggle = ctx.components.mountSwitch(autoToggleMount, {
+    checked: false,
+    size: 'sm',
+    ariaLabel: 'Auto-reply',
+    onChange: (checked) => {
+      ctx.sendToBackend({ type: 'set_auto_reply', enabled: checked });
+      if (triggerMode === 'time') {
+        if (checked) startAutoTimer();
+        else stopAutoTimer();
+      }
+    },
+  });
 
   const genButton = document.createElement('button');
   makeInteractive(genButton);
@@ -2300,18 +2359,6 @@ export function setup(ctx: SpindleFrontendContext) {
     if (nx !== pos.x || ny !== pos.y) widget.moveTo(nx, ny);
   });
 
-  // ── Event wiring ──
-  autoToggle.addEventListener('change', () => {
-    ctx.sendToBackend({ type: 'set_auto_reply', enabled: autoToggle.checked });
-    if (triggerMode === 'time') {
-      if (autoToggle.checked) {
-        startAutoTimer();
-      } else {
-        stopAutoTimer();
-      }
-    }
-  });
-
   function normalizeOutgoingMentions(rawText: string) {
     const slugToMember = new Map(councilMembers.map(member => [member.slug, member]));
     const mentionedMemberNames: string[] = [];
@@ -2525,22 +2572,22 @@ export function setup(ctx: SpindleFrontendContext) {
 
   const unsubBackend = ctx.onBackendMessage((payload: any) => {
     if (payload.type === 'settings_loaded') {
-      triggerModeSelect.value = payload.triggerMode ?? 'time';
-      messageIntervalInput.value = (payload.messageInterval ?? 10).toString();
-      randomToggleCheckbox.checked = payload.randomIntervalEnabled ?? true;
-      intervalMinInput.value = (payload.intervalMin ?? 5).toString();
-      intervalMaxInput.value = (payload.intervalMax ?? 15).toString();
-      messageCountInput.value = (payload.messageCount ?? 5).toString();
-      randomMessageCountCheckbox.checked = payload.randomMessageCountEnabled ?? true;
-      messageCountMinInput.value = (payload.messageCountMin ?? 3).toString();
-      messageCountMaxInput.value = (payload.messageCountMax ?? 7).toString();
-      contextInput.value = (payload.contextLimit ?? 10).toString();
-      maxContextTokensInput.value = (payload.maxContextTokens ?? 4096).toString();
-      temperatureInput.value = payload.temperature != null ? payload.temperature.toString() : '';
-      topPInput.value = payload.topP != null ? payload.topP.toString() : '';
-      topKEnabledCheckbox.checked = payload.topKEnabled ?? false;
-      topKInput.value = (payload.topK ?? 0).toString();
-      maxResponseTokensInput.value = payload.maxResponseTokens != null ? payload.maxResponseTokens.toString() : '';
+      triggerModeSelect.update({ value: payload.triggerMode ?? 'time' });
+      messageIntervalInput.update({ value: payload.messageInterval ?? 10 });
+      randomToggleCheckbox.update({ checked: payload.randomIntervalEnabled ?? true });
+      intervalMinInput.update({ value: payload.intervalMin ?? 5 });
+      intervalMaxInput.update({ value: payload.intervalMax ?? 15 });
+      messageCountInput.update({ value: payload.messageCount ?? 5 });
+      randomMessageCountCheckbox.update({ checked: payload.randomMessageCountEnabled ?? true });
+      messageCountMinInput.update({ value: payload.messageCountMin ?? 3 });
+      messageCountMaxInput.update({ value: payload.messageCountMax ?? 7 });
+      contextInput.update({ value: payload.contextLimit ?? 10 });
+      maxContextTokensInput.update({ value: payload.maxContextTokens ?? 4096 });
+      temperatureInput.update({ value: payload.temperature ?? null });
+      topPInput.update({ value: payload.topP ?? null });
+      topKEnabledCheckbox.update({ checked: payload.topKEnabled ?? false });
+      topKInput.update({ value: payload.topK ?? 0 });
+      maxResponseTokensInput.update({ value: payload.maxResponseTokens ?? null });
 
       triggerMode = payload.triggerMode ?? 'time';
       messageInterval = payload.messageInterval ?? 10;
@@ -2567,26 +2614,42 @@ export function setup(ctx: SpindleFrontendContext) {
         refreshMentionResults();
       }
 
-      chatroomNameInput.value = payload.chatroomName ?? '';
+      chatroomNameInput.update({ value: payload.chatroomName ?? '' });
       headerTitle.textContent = payload.chatroomName?.trim() || 'Council Chatroom';
 
-      autoToggle.checked = payload.autoReply ?? false;
+      autoToggle.update({ checked: payload.autoReply ?? false });
       if (payload.autoReply && triggerMode === 'time') {
         startAutoTimer();
       } else if (!payload.autoReply && autoTimer) {
         stopAutoTimer();
       }
 
-      connectionSelect.innerHTML = '<option value="">Default Active Connection</option>';
-      if (payload.connections) {
-        for (const conn of payload.connections) {
-          const opt = document.createElement('option');
-          opt.value = conn.id;
-          opt.textContent = `${conn.name} (${conn.provider})`;
-          connectionSelect.appendChild(opt);
-        }
-      }
-      connectionSelect.value = payload.connectionId || '';
+      connectionSelect.update({
+        options: Array.isArray(payload.connections)
+          ? payload.connections.map((c: { id: string; name: string; provider: string }) => ({
+              value: c.id,
+              label: `${c.name} (${c.provider})`,
+            }))
+          : [],
+        value: payload.connectionId || '',
+      });
+
+      personaSelect.update({
+        options: Array.isArray(payload.personas)
+          ? payload.personas.map((p: { id: string; name: string; title: string; avatarUrl: string | null }) => {
+              const initial = (p.name?.[0] || '?').toUpperCase();
+              return {
+                value: p.id,
+                label: p.name,
+                sublabel: p.title || undefined,
+                leading: p.avatarUrl
+                  ? { type: 'image' as const, src: p.avatarUrl, fallback: { text: initial } }
+                  : { type: 'initial' as const, text: initial },
+              };
+            })
+          : [],
+        value: typeof payload.personaId === 'string' ? payload.personaId : '',
+      });
 
       const shouldShowWidget = Boolean((payload.history && payload.history.length > 0) || payload.hasActiveChat);
 
@@ -2601,10 +2664,14 @@ export function setup(ctx: SpindleFrontendContext) {
       // Restore persisted widget position/size (desktop only)
       if (!isMobile && payload.widgetX != null && payload.widgetY != null) {
         widget.moveTo(payload.widgetX, payload.widgetY);
+        userWidgetState.x = payload.widgetX;
+        userWidgetState.y = payload.widgetY;
       }
       if (!isMobile && payload.widgetW != null && payload.widgetH != null) {
         setWidgetSize(payload.widgetW, payload.widgetH);
         expandedHeight = payload.widgetH;
+        userWidgetState.w = payload.widgetW;
+        userWidgetState.h = payload.widgetH;
         syncHostWrapperSize();
       }
 
@@ -2614,7 +2681,7 @@ export function setup(ctx: SpindleFrontendContext) {
     } else if (payload.type === 'hide_widget') {
       setWidgetVisible(false);
       stopAutoTimer();
-      autoToggle.checked = false;
+      autoToggle.update({ checked: false });
     } else if (payload.type === 'chat_changed') {
       setWidgetVisible(true);
       setCouncilMembers(Array.isArray(payload.councilMembers) ? payload.councilMembers : []);
@@ -2681,6 +2748,31 @@ export function setup(ctx: SpindleFrontendContext) {
     shellResizeObserver.disconnect();
     destroyVirtualizer();
     unsubBackend();
+    unsubKeyboard();
+    for (const handle of [
+      chatroomNameInput,
+      connectionSelect,
+      personaSelect,
+      triggerModeSelect,
+      messageIntervalInput,
+      randomToggleCheckbox,
+      intervalMinInput,
+      intervalMaxInput,
+      messageCountInput,
+      randomMessageCountCheckbox,
+      messageCountMinInput,
+      messageCountMaxInput,
+      contextInput,
+      maxContextTokensInput,
+      temperatureInput,
+      topPInput,
+      topKEnabledCheckbox,
+      topKInput,
+      maxResponseTokensInput,
+      autoToggle,
+    ]) {
+      handle.destroy();
+    }
     widget.destroy();
     tab.destroy();
     ctx.dom.cleanup();
