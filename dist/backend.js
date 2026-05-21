@@ -265,10 +265,17 @@ Format each message exactly as follows:
 MemberName (Username): The message content
 `;
     const chatroomHistory = await getChatroomHistory(chatId, resolvedUserId);
+    const groupedTurns = toGroupedChatroomTurns(chatroomHistory).slice(-20);
     const promptMessages = [
       { role: "system", content: systemPrompt },
-      ...toGroupedChatroomTurns(chatroomHistory).slice(-20)
+      ...groupedTurns
     ];
+    if (groupedTurns.length === 0) {
+      promptMessages.push({
+        role: "user",
+        content: "Kick off the council chatroom by reacting to the current story context above."
+      });
+    }
     const parseChunk = (rawChunk) => {
       const trimmed = rawChunk.trim();
       if (!trimmed)
@@ -317,6 +324,9 @@ MemberName (Username): The message content
         let trimAttempts = 0;
         const maxTrimAttempts = 100;
         while (countResult.total_tokens > maxContextTokens && trimAttempts < maxTrimAttempts) {
+          const nonSystemCount = promptMessages.reduce((acc, m) => acc + (m.role !== "system" ? 1 : 0), 0);
+          if (nonSystemCount <= 1)
+            break;
           const firstNonSystemIdx = promptMessages.findIndex((m) => m.role !== "system");
           if (firstNonSystemIdx === -1)
             break;

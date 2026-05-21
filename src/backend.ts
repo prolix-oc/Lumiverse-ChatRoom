@@ -386,10 +386,17 @@ MemberName (Username): The message content
 `;
 
     const chatroomHistory = await getChatroomHistory(chatId, resolvedUserId);
-    const promptMessages = [
-      { role: 'system' as const, content: systemPrompt },
-      ...toGroupedChatroomTurns(chatroomHistory).slice(-20)
+    const groupedTurns = toGroupedChatroomTurns(chatroomHistory).slice(-20);
+    const promptMessages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
+      { role: 'system', content: systemPrompt },
+      ...groupedTurns
     ];
+    if (groupedTurns.length === 0) {
+      promptMessages.push({
+        role: 'user',
+        content: 'Kick off the council chatroom by reacting to the current story context above.'
+      });
+    }
 
     const parseChunk = (rawChunk: string) => {
       const trimmed = rawChunk.trim();
@@ -446,11 +453,14 @@ MemberName (Username): The message content
         let countResult = await spindle.tokens.countMessages(promptMessages, { model: conn.model, userId: resolvedUserId });
         spindle.log.info(`Prompt token count: ${countResult.total_tokens} / ${maxContextTokens} (model: ${countResult.model})`);
 
-        // Trim oldest chatroom history messages until under the limit
+        // Trim oldest chatroom history messages until under the limit, keeping
+        // at least one non-system message so the API call stays valid.
         let trimAttempts = 0;
         const maxTrimAttempts = 100;
         while (countResult.total_tokens > maxContextTokens && trimAttempts < maxTrimAttempts) {
-          // Find the index of the first non-system message
+          const nonSystemCount = promptMessages.reduce((acc, m) => acc + (m.role !== 'system' ? 1 : 0), 0);
+          if (nonSystemCount <= 1) break;
+
           const firstNonSystemIdx = promptMessages.findIndex(m => m.role !== 'system');
           if (firstNonSystemIdx === -1) break;
 
