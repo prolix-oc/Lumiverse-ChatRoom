@@ -209,6 +209,24 @@ export function setup(ctx: SpindleFrontendContext) {
     noResultsMessage: 'No personas match.',
   });
 
+  // Other Chatters (character cards added as guest chat participants)
+  const otherChattersMount = document.createElement('div');
+  otherChattersMount.style.cssText = 'min-width: 260px; max-width: 400px;';
+  configCard.appendChild(createSettingRow(
+    'Other Chatters',
+    'Add characters from your library as guest participants in this chatroom. Saved per-chat. They chat casually alongside your council members and can be @mentioned.',
+    otherChattersMount
+  ));
+  const otherChattersSelect = ctx.components.mountMultiSelect(otherChattersMount, {
+    options: [],
+    value: [],
+    placeholder: 'No guest chatters',
+    searchPlaceholder: 'Search your characters…',
+    searchThreshold: 0,
+    emptyMessage: 'No characters available.',
+    noResultsMessage: 'No characters match.',
+  });
+
 
   // Trigger Mode
   const triggerModeMount = document.createElement('div');
@@ -530,6 +548,7 @@ export function setup(ctx: SpindleFrontendContext) {
       maxResponseTokens: maxResponseTokensInput.getValue(),
       connectionId: connectionSelect.getValue(),
       personaId: personaSelect.getValue(),
+      characterIds: otherChattersSelect.getValue(),
       chatroomName: chatroomNameInput.getValue().trim(),
     });
   });
@@ -1068,7 +1087,14 @@ export function setup(ctx: SpindleFrontendContext) {
   // When the on-screen keyboard appears, shrink (and shift if needed) the
   // widget so the input bar stays above the keyboard. Restore on dismiss
   // without persisting — the saved widget state stays as the user left it.
+  //
+  // The host's keyboard state is global: it reflects whether *any* virtual
+  // keyboard is visible, regardless of which element is focused. We only
+  // adjust the widget while our own chat input holds focus, so the keyboard
+  // appearing for some other field on the host page leaves the widget alone.
   let keyboardAdjustment: { x: number; y: number; w: number; h: number } | null = null;
+  let chatInputFocused = false;
+  let lastKeyboardState = ctx.ui.events.getKeyboardState();
   const KEYBOARD_TOP_PAD = 8;
   const KEYBOARD_GAP = 8;
   const KEYBOARD_MIN_HEIGHT = 220;
@@ -1113,16 +1139,22 @@ export function setup(ctx: SpindleFrontendContext) {
     syncHostWrapperSize();
   }
 
-  const unsubKeyboard = ctx.ui.events.onKeyboardChange((state) => {
+  function reconcileKeyboardAdjustment() {
     if (isFullscreen) {
       clearKeyboardAdjustment();
       return;
     }
-    if (state.visible && state.insetBottom > 0 && widgetVisible) {
+    const state = lastKeyboardState;
+    if (chatInputFocused && state.visible && state.insetBottom > 0 && widgetVisible) {
       applyKeyboardAdjustment(state.insetBottom, state.viewportHeight);
     } else {
       clearKeyboardAdjustment();
     }
+  }
+
+  const unsubKeyboard = ctx.ui.events.onKeyboardChange((state) => {
+    lastKeyboardState = state;
+    reconcileKeyboardAdjustment();
   });
 
   // ── Header ──
@@ -2413,7 +2445,17 @@ export function setup(ctx: SpindleFrontendContext) {
     updateComposerDecorations();
     runMentionDetection();
   });
+  inputField.addEventListener('focus', () => {
+    chatInputFocused = true;
+    // Refresh in case the keyboard was already up before we gained focus.
+    lastKeyboardState = ctx.ui.events.getKeyboardState();
+    reconcileKeyboardAdjustment();
+  });
   inputField.addEventListener('blur', () => {
+    chatInputFocused = false;
+    // Restore the widget as soon as our input loses focus, even if the host
+    // keyboard stays visible for another field.
+    reconcileKeyboardAdjustment();
     window.setTimeout(() => {
       if (document.activeElement !== inputField) {
         closeMentionPopover();
@@ -2651,6 +2693,22 @@ export function setup(ctx: SpindleFrontendContext) {
         value: typeof payload.personaId === 'string' ? payload.personaId : '',
       });
 
+      otherChattersSelect.update({
+        options: Array.isArray(payload.characters)
+          ? payload.characters.map((c: { id: string; name: string; avatarUrl: string | null }) => {
+              const initial = (c.name?.[0] || '?').toUpperCase();
+              return {
+                value: c.id,
+                label: c.name,
+                leading: c.avatarUrl
+                  ? { type: 'image' as const, src: c.avatarUrl, fallback: { text: initial } }
+                  : { type: 'initial' as const, text: initial },
+              };
+            })
+          : [],
+        value: Array.isArray(payload.characterIds) ? payload.characterIds : [],
+      });
+
       const shouldShowWidget = Boolean((payload.history && payload.history.length > 0) || payload.hasActiveChat);
 
       if (payload.history && payload.history.length > 0) {
@@ -2685,6 +2743,9 @@ export function setup(ctx: SpindleFrontendContext) {
     } else if (payload.type === 'chat_changed') {
       setWidgetVisible(true);
       setCouncilMembers(Array.isArray(payload.councilMembers) ? payload.councilMembers : []);
+      if (Array.isArray(payload.characterIds)) {
+        otherChattersSelect.update({ value: payload.characterIds });
+      }
       renderMirrorContent();
       if (mentionQuery != null) {
         refreshMentionResults();
@@ -2694,6 +2755,12 @@ export function setup(ctx: SpindleFrontendContext) {
         loadHistory(payload.history);
       } else {
         clearMessages();
+      }
+    } else if (payload.type === 'members_updated') {
+      setCouncilMembers(Array.isArray(payload.councilMembers) ? payload.councilMembers : []);
+      renderMirrorContent();
+      if (mentionQuery != null) {
+        refreshMentionResults();
       }
     } else if (payload.type === 'generation_started') {
       isGenerating = true;

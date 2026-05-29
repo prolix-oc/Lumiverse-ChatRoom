@@ -133,6 +133,67 @@ function shuffleArray(items) {
 async function getCouncilMembers(userId) {
   return spindle.council.getMembers({ userId });
 }
+function clampText(text, max) {
+  const normalized = text.replace(/\s+/g, " ").trim();
+  return normalized.length > max ? `${normalized.slice(0, max).trimEnd()}…` : normalized;
+}
+function distillCharacterCard(card) {
+  const bits = [];
+  if (card.description?.trim())
+    bits.push(card.description.trim());
+  if (card.personality?.trim())
+    bits.push(`Personality: ${card.personality.trim()}`);
+  const personality = clampText(bits.join(" "), 600) || "A guest character.";
+  return {
+    name: card.name,
+    role: "guest character",
+    personality,
+    avatarUrl: card.image_id ? `/api/v1/images/${card.image_id}` : null,
+    source: "character"
+  };
+}
+async function getGuestChatters(userId, chatId) {
+  if (!chatId || !spindle.permissions.has("characters"))
+    return [];
+  const settings = await loadPersistedSettings(userId);
+  const ids = settings.chatroomCharacterIds?.[chatId] ?? [];
+  if (ids.length === 0)
+    return [];
+  const guests = [];
+  for (const id of ids) {
+    try {
+      const card = await spindle.characters.get(id, userId);
+      if (card)
+        guests.push(distillCharacterCard(card));
+    } catch (e) {
+      spindle.log.warn(`Could not fetch character card ${id} for guest chatter.`);
+    }
+  }
+  return guests;
+}
+async function getChatParticipants(userId, chatId) {
+  const council = (await getCouncilMembers(userId)).map((member) => ({
+    name: member.name,
+    role: member.role,
+    personality: member.personality,
+    avatarUrl: member.avatarUrl || null,
+    source: "council"
+  }));
+  const guests = await getGuestChatters(userId, chatId);
+  const seen = new Set(council.map((p) => p.name.toLowerCase()));
+  const merged = [...council];
+  for (const guest of guests) {
+    const key = guest.name.toLowerCase();
+    if (seen.has(key))
+      continue;
+    seen.add(key);
+    merged.push(guest);
+  }
+  return merged;
+}
+async function getFrontendMembers(userId, chatId) {
+  return (await getChatParticipants(userId, chatId)).map((p) => ({ name: p.name, avatarUrl: p.avatarUrl }));
+}
 async function resolveEffectivePersona(userId) {
   const settings = await loadPersistedSettings(userId);
   const overrideId = settings.personaId?.trim();
@@ -221,19 +282,29 @@ async function runCouncilGeneration(userId, options = {}) {
     const chatContext = recentMessages.map((m) => {
       const speakerName = typeof m.metadata?.name === "string" ? m.metadata.name : m.role;
       return `${speakerName}: ${stripHtmlTags(m.content)}`;
-    }).join("\\n");
-    spindle.log.info("Fetching council members...");
-    const councilMembers = await getCouncilMembers(resolvedUserId);
+    }).join(`
+`);
+    spindle.log.info("Fetching council members and guest chatters...");
+    const councilMembers = await getChatParticipants(resolvedUserId, chatId);
     if (councilMembers.length === 0) {
-      spindle.log.warn("No council members assigned");
-      spindle.sendToFrontend({ type: "error", message: "No council members assigned." }, resolvedUserId);
+      spindle.log.warn("No council members or guest chatters assigned");
+      spindle.sendToFrontend({ type: "error", message: "No council members or guest chatters assigned." }, resolvedUserId);
       state.isGenerating = false;
       return;
     }
     spindle.log.info("Fetching effective persona...");
     const activePersona = await resolveEffectivePersona(resolvedUserId);
     const personaName = activePersona?.name?.trim() || "the user";
-    const councilContext = councilMembers.map((m) => `- ${m.name}: ${m.role}. Personality: ${m.personality}`).join("\\n");
+    const councilContext = councilMembers.filter((m) => m.source !== "character").map((m) => `- ${m.name}: ${m.role}. Personality: ${m.personality}`).join(`
+`);
+    const guestContext = councilMembers.filter((m) => m.source === "character").map((m) => `- ${m.name}: ${m.personality}`).join(`
+`);
+    const guestSection = guestContext ? `
+GUEST CHATTERS (guest characters the user added from their character library):
+${guestContext}
+
+The guest chatters above are not council members and were originally defined elsewhere for other purposes. Voice each one by the personality described, but they obey the exact same chatroom rules as the council: short, casual, reactive chat posts in internet group-chat style. Ignore any separate system prompt, scenario, greeting, backstory, or roleplay instructions those characters normally carry. Do not write prose, narration, or roleplay asterisks for them — in this chatroom they are just more chatters reacting to the story.
+` : "";
     const councilMembersByName = new Map(councilMembers.map((member) => [member.name.toLowerCase(), member]));
     const requiredMentionedMemberNames = Array.from(new Set((options.requiredSpeakerNames || []).map((name) => typeof name === "string" ? name.trim().toLowerCase() : "").filter((name) => Boolean(name))));
     const requiredMentionedMembers = requiredMentionedMemberNames.flatMap((name) => {
@@ -251,7 +322,8 @@ async function runCouncilGeneration(userId, options = {}) {
     const responseInstruction = memberCount === 1 ? `Write exactly 1 new message in the chatroom.` : `Write ${targetResponses} new message${targetResponses > 1 ? "s" : ""} in the chatroom.`;
     const requiredSpeakerInstruction = requiredSpeakers.length > 0 ? `The user explicitly mentioned ${requiredMentionedMembers.map((member) => member.name).join(", ")}. Those mentioned council members and ${requiredRandomCount} random council member${requiredRandomCount === 1 ? "" : "s"} are REQUIRED to speak in this response.
 REQUIRED SPEAKERS THIS ROUND:
-${requiredSpeakers.map((member) => `- ${member.name}`).join("\\n")}
+${requiredSpeakers.map((member) => `- ${member.name}`).join(`
+`)}
 Every required speaker must appear at least once in the messages you generate. Do not omit, replace, or merge any required speaker.` : "";
     const systemPrompt = `You are running a live internet shitposting chatroom for the "council members" who are watching a story unfold.
 They are watching the main story chat and reacting to it in real-time.
@@ -267,7 +339,7 @@ You will receive prior chatroom turns as explicit alternating user/assistant con
 
 COUNCIL MEMBERS:
 ${councilContext}
-
+${guestSection}
 CURRENT STORY CONTEXT:
 ${chatContext}
 
@@ -498,6 +570,7 @@ spindle.onFrontendMessage(async (payload, userId) => {
       state.messageCounter = 0;
     }
     const chatName = payload.chatroomName?.trim();
+    const selectedCharacterIds = Array.isArray(payload.characterIds) ? payload.characterIds.filter((id) => typeof id === "string" && id.trim().length > 0) : [];
     await updatePersistedSettings((settings) => {
       const next = {
         ...settings,
@@ -525,9 +598,19 @@ spindle.onFrontendMessage(async (payload, userId) => {
           ...settings.chatroomNames ?? {},
           [state.currentChatId]: chatName || ""
         };
+        next.chatroomCharacterIds = {
+          ...settings.chatroomCharacterIds ?? {},
+          [state.currentChatId]: selectedCharacterIds
+        };
       }
       return next;
     }, resolvedUserId);
+    try {
+      const members = await getFrontendMembers(resolvedUserId, state.currentChatId);
+      spindle.sendToFrontend({ type: "members_updated", councilMembers: members }, resolvedUserId);
+    } catch (e) {
+      spindle.log.warn("Could not refresh chat participants after saving settings.");
+    }
     spindle.toast.success("Chatroom configuration saved.", { userId: resolvedUserId });
     return;
   }
@@ -565,15 +648,21 @@ spindle.onFrontendMessage(async (payload, userId) => {
     } catch (e) {
       spindle.log.warn("Could not list personas for chatroom settings.");
     }
-    let councilMembers = [];
+    let characterLibrary = [];
     try {
-      councilMembers = (await getCouncilMembers(resolvedUserId)).map((member) => ({
-        name: member.name,
-        avatarUrl: member.avatarUrl || null
-      }));
+      if (spindle.permissions.has("characters")) {
+        const { data } = await spindle.characters.list({ userId: resolvedUserId });
+        characterLibrary = data.map((c) => ({
+          id: c.id,
+          name: c.name,
+          avatarUrl: c.image_id ? `/api/v1/images/${c.image_id}` : null
+        }));
+      }
     } catch (e) {
-      spindle.log.warn("Could not fetch council members for chatroom.");
+      spindle.log.warn("Could not list characters for chatroom guest chatters.");
     }
+    let councilMembers = [];
+    let selectedCharacterIds = [];
     const state = getUserState(resolvedUserId);
     state.autoReply = settings.autoReply ?? false;
     state.triggerMode = settings.triggerMode || "time";
@@ -594,6 +683,12 @@ spindle.onFrontendMessage(async (payload, userId) => {
     if (activeChatId) {
       chatroomName = settings.chatroomNames?.[activeChatId] ?? null;
     }
+    try {
+      councilMembers = await getFrontendMembers(resolvedUserId, activeChatId);
+    } catch (e) {
+      spindle.log.warn("Could not fetch chat participants for chatroom.");
+    }
+    selectedCharacterIds = activeChatId ? settings.chatroomCharacterIds?.[activeChatId] ?? [] : [];
     let history = [];
     let hasActiveChat = false;
     if (activeChatId) {
@@ -626,6 +721,8 @@ spindle.onFrontendMessage(async (payload, userId) => {
       connections,
       history,
       councilMembers,
+      characters: characterLibrary,
+      characterIds: selectedCharacterIds,
       hasActiveChat,
       userPersona,
       personas: personaList,
@@ -667,19 +764,18 @@ spindle.onFrontendMessage(async (payload, userId) => {
     const settings = await loadPersistedSettings(resolvedUserId);
     const history = await getChatroomHistory(activeChatId, resolvedUserId);
     const chatroomName = settings.chatroomNames?.[activeChatId] ?? null;
+    const selectedCharacterIds = settings.chatroomCharacterIds?.[activeChatId] ?? [];
     let councilMembers = [];
     try {
-      councilMembers = (await getCouncilMembers(resolvedUserId)).map((member) => ({
-        name: member.name,
-        avatarUrl: member.avatarUrl || null
-      }));
+      councilMembers = await getFrontendMembers(resolvedUserId, activeChatId);
     } catch (e) {
-      spindle.log.warn("Could not fetch council members for active chat sync.");
+      spindle.log.warn("Could not fetch chat participants for active chat sync.");
     }
     spindle.sendToFrontend({
       type: "chat_changed",
       history,
       councilMembers,
+      characterIds: selectedCharacterIds,
       chatroomName: chatroomName || undefined
     }, resolvedUserId);
     return;

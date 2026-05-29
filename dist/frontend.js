@@ -1043,6 +1043,18 @@ function setup(ctx) {
     emptyMessage: "No personas available.",
     noResultsMessage: "No personas match."
   });
+  const otherChattersMount = document.createElement("div");
+  otherChattersMount.style.cssText = "min-width: 260px; max-width: 400px;";
+  configCard.appendChild(createSettingRow("Other Chatters", "Add characters from your library as guest participants in this chatroom. Saved per-chat. They chat casually alongside your council members and can be @mentioned.", otherChattersMount));
+  const otherChattersSelect = ctx.components.mountMultiSelect(otherChattersMount, {
+    options: [],
+    value: [],
+    placeholder: "No guest chatters",
+    searchPlaceholder: "Search your characters…",
+    searchThreshold: 0,
+    emptyMessage: "No characters available.",
+    noResultsMessage: "No characters match."
+  });
   const triggerModeMount = document.createElement("div");
   triggerModeMount.style.cssText = "min-width: 260px; max-width: 400px;";
   configCard.appendChild(createSettingRow("Auto-Reply Trigger", "Choose whether council auto-replies are triggered by elapsed time or by the number of story chat messages sent.", triggerModeMount));
@@ -1298,6 +1310,7 @@ function setup(ctx) {
       maxResponseTokens: maxResponseTokensInput.getValue(),
       connectionId: connectionSelect.getValue(),
       personaId: personaSelect.getValue(),
+      characterIds: otherChattersSelect.getValue(),
       chatroomName: chatroomNameInput.getValue().trim()
     });
   });
@@ -1766,6 +1779,8 @@ function setup(ctx) {
     persistWidgetState();
   });
   let keyboardAdjustment = null;
+  let chatInputFocused = false;
+  let lastKeyboardState = ctx.ui.events.getKeyboardState();
   const KEYBOARD_TOP_PAD = 8;
   const KEYBOARD_GAP = 8;
   const KEYBOARD_MIN_HEIGHT = 220;
@@ -1806,16 +1821,21 @@ function setup(ctx) {
     widget.moveTo(snapshot.x, snapshot.y);
     syncHostWrapperSize();
   }
-  const unsubKeyboard = ctx.ui.events.onKeyboardChange((state) => {
+  function reconcileKeyboardAdjustment() {
     if (isFullscreen) {
       clearKeyboardAdjustment();
       return;
     }
-    if (state.visible && state.insetBottom > 0 && widgetVisible) {
+    const state = lastKeyboardState;
+    if (chatInputFocused && state.visible && state.insetBottom > 0 && widgetVisible) {
       applyKeyboardAdjustment(state.insetBottom, state.viewportHeight);
     } else {
       clearKeyboardAdjustment();
     }
+  }
+  const unsubKeyboard = ctx.ui.events.onKeyboardChange((state) => {
+    lastKeyboardState = state;
+    reconcileKeyboardAdjustment();
   });
   const header = document.createElement("div");
   header.style.cssText = `
@@ -2908,7 +2928,14 @@ function setup(ctx) {
     updateComposerDecorations();
     runMentionDetection();
   });
+  inputField.addEventListener("focus", () => {
+    chatInputFocused = true;
+    lastKeyboardState = ctx.ui.events.getKeyboardState();
+    reconcileKeyboardAdjustment();
+  });
   inputField.addEventListener("blur", () => {
+    chatInputFocused = false;
+    reconcileKeyboardAdjustment();
     window.setTimeout(() => {
       if (document.activeElement !== inputField) {
         closeMentionPopover();
@@ -3111,6 +3138,17 @@ function setup(ctx) {
         }) : [],
         value: typeof payload.personaId === "string" ? payload.personaId : ""
       });
+      otherChattersSelect.update({
+        options: Array.isArray(payload.characters) ? payload.characters.map((c) => {
+          const initial = (c.name?.[0] || "?").toUpperCase();
+          return {
+            value: c.id,
+            label: c.name,
+            leading: c.avatarUrl ? { type: "image", src: c.avatarUrl, fallback: { text: initial } } : { type: "initial", text: initial }
+          };
+        }) : [],
+        value: Array.isArray(payload.characterIds) ? payload.characterIds : []
+      });
       const shouldShowWidget = Boolean(payload.history && payload.history.length > 0 || payload.hasActiveChat);
       if (payload.history && payload.history.length > 0) {
         loadHistory(payload.history);
@@ -3141,6 +3179,9 @@ function setup(ctx) {
     } else if (payload.type === "chat_changed") {
       setWidgetVisible(true);
       setCouncilMembers(Array.isArray(payload.councilMembers) ? payload.councilMembers : []);
+      if (Array.isArray(payload.characterIds)) {
+        otherChattersSelect.update({ value: payload.characterIds });
+      }
       renderMirrorContent();
       if (mentionQuery != null) {
         refreshMentionResults();
@@ -3150,6 +3191,12 @@ function setup(ctx) {
         loadHistory(payload.history);
       } else {
         clearMessages();
+      }
+    } else if (payload.type === "members_updated") {
+      setCouncilMembers(Array.isArray(payload.councilMembers) ? payload.councilMembers : []);
+      renderMirrorContent();
+      if (mentionQuery != null) {
+        refreshMentionResults();
       }
     } else if (payload.type === "generation_started") {
       isGenerating = true;

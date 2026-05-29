@@ -8,6 +8,6 @@
   },
   "dependencies": {
     "@tanstack/virtual-core": "^3.14.0",
-    "lumiverse-spindle-types": "0.5.5"
+    "lumiverse-spindle-types": "0.5.17"
   }
 }
