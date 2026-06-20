@@ -1445,6 +1445,7 @@ function setup(ctx) {
   let isFullscreen = false;
   let preFullscreenState = null;
   let expandedHeight = 620;
+  let expandedWidth = 440;
   let unreadCount = 0;
   let lastSenderId = null;
   let userPersona = null;
@@ -1564,6 +1565,7 @@ function setup(ctx) {
     const x = userWidgetState.x ?? pos.x;
     const y = userWidgetState.y ?? pos.y;
     expandedHeight = h;
+    expandedWidth = w;
     setWidgetSize(w, isCollapsed ? header.offsetHeight : h);
     widget.moveTo(x, y);
     requestAnimationFrame(() => clampWidgetToViewport());
@@ -1575,6 +1577,7 @@ function setup(ctx) {
     const defaults = getDefaultWidgetSize();
     const pos = getDefaultWidgetPosition();
     expandedHeight = defaults.height;
+    expandedWidth = defaults.width;
     if (isCollapsed) {
       isCollapsed = false;
       setWidgetSize(defaults.width, defaults.height);
@@ -1735,13 +1738,13 @@ function setup(ctx) {
     const persistedHeight = isCollapsed ? expandedHeight : shell.offsetHeight;
     userWidgetState.x = pos.x;
     userWidgetState.y = pos.y;
-    userWidgetState.w = shell.offsetWidth;
+    userWidgetState.w = expandedWidth;
     userWidgetState.h = persistedHeight;
     ctx.sendToBackend({
       type: "save_widget_state",
       x: pos.x,
       y: pos.y,
-      w: shell.offsetWidth,
+      w: expandedWidth,
       h: persistedHeight,
       collapsed: isCollapsed
     });
@@ -2741,6 +2744,8 @@ function setup(ctx) {
       resizeHandle.releasePointerCapture(e.pointerId);
     } catch (_) {}
     sizedWidget.setSize?.(shell.offsetWidth, shell.offsetHeight);
+    expandedWidth = shell.offsetWidth;
+    expandedHeight = shell.offsetHeight;
     syncHostWrapperSize();
     persistWidgetState();
   }
@@ -2788,7 +2793,7 @@ function setup(ctx) {
       collapseBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>`;
       collapseBtn.title = "Collapse";
       if (!isFullscreen)
-        setWidgetSize(shell.offsetWidth, expandedHeight);
+        setWidgetSize(expandedWidth, expandedHeight);
       syncHostWrapperSize();
       badge.style.display = "none";
       unreadCount = 0;
@@ -2799,8 +2804,10 @@ function setup(ctx) {
     if (syncFullscreenStateFromHost()) {
       fsBtn.click();
     }
-    if (!isCollapsed)
+    if (!isCollapsed) {
       expandedHeight = shell.offsetHeight;
+      expandedWidth = shell.offsetWidth;
+    }
     isCollapsed = !isCollapsed;
     updateCollapse();
     persistWidgetState();
@@ -2813,16 +2820,20 @@ function setup(ctx) {
       if (supportsNativeFullscreen) {
         widget.setFullscreen(false);
       } else {
-        const props = ["position", "left", "top", "right", "bottom", "margin", "transform"];
+        const props = ["position", "left", "top", "right", "bottom", "width", "height", "margin", "transform"];
         props.forEach((p) => hostWrapper.style.removeProperty(p));
         if (preFullscreenState) {
           widget.moveTo(preFullscreenState.x, preFullscreenState.y);
         }
       }
       if (preFullscreenState) {
+        expandedWidth = preFullscreenState.w;
+        expandedHeight = preFullscreenState.h;
         setWidgetSize(preFullscreenState.w, preFullscreenState.h);
       }
       shell.style.removeProperty("border-radius");
+      if (!supportsNativeFullscreen)
+        syncHostWrapperSize();
       syncHeaderSafeAreaPadding();
       updateCollapse();
       fsBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>`;
@@ -3165,6 +3176,7 @@ function setup(ctx) {
       if (!isMobile && payload.widgetW != null && payload.widgetH != null) {
         setWidgetSize(payload.widgetW, payload.widgetH);
         expandedHeight = payload.widgetH;
+        expandedWidth = payload.widgetW;
         userWidgetState.w = payload.widgetW;
         userWidgetState.h = payload.widgetH;
         syncHostWrapperSize();

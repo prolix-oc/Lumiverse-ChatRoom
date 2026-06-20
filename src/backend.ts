@@ -848,13 +848,29 @@ spindle.onFrontendMessage(async (payload: any, userId) => {
 
     let personaList: Array<{ id: string; name: string; title: string; avatarUrl: string | null }> = [];
     try {
-      const { data } = await spindle.personas.list({ userId: resolvedUserId });
-      personaList = data.map(p => ({
-        id: p.id,
-        name: p.name,
-        title: p.title || '',
-        avatarUrl: p.image_id ? `/api/v1/images/${p.image_id}` : null,
-      }));
+      // Page through the full list — personas.list() defaults to a single server
+      // page, which silently truncates large libraries in the picker.
+      const pageSize = 100;
+      let offset = 0;
+      let total = Infinity;
+      while (offset < total) {
+        const { data, total: pageTotal } = await spindle.personas.list({
+          userId: resolvedUserId,
+          limit: pageSize,
+          offset,
+        });
+        total = pageTotal;
+        for (const p of data) {
+          personaList.push({
+            id: p.id,
+            name: p.name,
+            title: p.title || '',
+            avatarUrl: p.image_id ? `/api/v1/images/${p.image_id}` : null,
+          });
+        }
+        if (data.length === 0) break;
+        offset += data.length;
+      }
     } catch (e) {
       spindle.log.warn('Could not list personas for chatroom settings.');
     }
@@ -863,12 +879,28 @@ spindle.onFrontendMessage(async (payload: any, userId) => {
     let characterLibrary: Array<{ id: string; name: string; avatarUrl: string | null }> = [];
     try {
       if (spindle.permissions.has('characters')) {
-        const { data } = await spindle.characters.list({ userId: resolvedUserId });
-        characterLibrary = data.map(c => ({
-          id: c.id,
-          name: c.name,
-          avatarUrl: c.image_id ? `/api/v1/images/${c.image_id}` : null,
-        }));
+        // Page through the full library — characters.list() defaults to a single
+        // server page, which silently truncates large libraries in the picker.
+        const pageSize = 100;
+        let offset = 0;
+        let total = Infinity;
+        while (offset < total) {
+          const { data, total: pageTotal } = await spindle.characters.list({
+            userId: resolvedUserId,
+            limit: pageSize,
+            offset,
+          });
+          total = pageTotal;
+          for (const c of data) {
+            characterLibrary.push({
+              id: c.id,
+              name: c.name,
+              avatarUrl: c.image_id ? `/api/v1/images/${c.image_id}` : null,
+            });
+          }
+          if (data.length === 0) break;
+          offset += data.length;
+        }
       }
     } catch (e) {
       spindle.log.warn('Could not list characters for chatroom guest chatters.');

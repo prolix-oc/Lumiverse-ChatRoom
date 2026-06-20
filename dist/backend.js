@@ -638,25 +638,55 @@ spindle.onFrontendMessage(async (payload, userId) => {
     }
     let personaList = [];
     try {
-      const { data } = await spindle.personas.list({ userId: resolvedUserId });
-      personaList = data.map((p) => ({
-        id: p.id,
-        name: p.name,
-        title: p.title || "",
-        avatarUrl: p.image_id ? `/api/v1/images/${p.image_id}` : null
-      }));
+      const pageSize = 100;
+      let offset = 0;
+      let total = Infinity;
+      while (offset < total) {
+        const { data, total: pageTotal } = await spindle.personas.list({
+          userId: resolvedUserId,
+          limit: pageSize,
+          offset
+        });
+        total = pageTotal;
+        for (const p of data) {
+          personaList.push({
+            id: p.id,
+            name: p.name,
+            title: p.title || "",
+            avatarUrl: p.image_id ? `/api/v1/images/${p.image_id}` : null
+          });
+        }
+        if (data.length === 0)
+          break;
+        offset += data.length;
+      }
     } catch (e) {
       spindle.log.warn("Could not list personas for chatroom settings.");
     }
     let characterLibrary = [];
     try {
       if (spindle.permissions.has("characters")) {
-        const { data } = await spindle.characters.list({ userId: resolvedUserId });
-        characterLibrary = data.map((c) => ({
-          id: c.id,
-          name: c.name,
-          avatarUrl: c.image_id ? `/api/v1/images/${c.image_id}` : null
-        }));
+        const pageSize = 100;
+        let offset = 0;
+        let total = Infinity;
+        while (offset < total) {
+          const { data, total: pageTotal } = await spindle.characters.list({
+            userId: resolvedUserId,
+            limit: pageSize,
+            offset
+          });
+          total = pageTotal;
+          for (const c of data) {
+            characterLibrary.push({
+              id: c.id,
+              name: c.name,
+              avatarUrl: c.image_id ? `/api/v1/images/${c.image_id}` : null
+            });
+          }
+          if (data.length === 0)
+            break;
+          offset += data.length;
+        }
       }
     } catch (e) {
       spindle.log.warn("Could not list characters for chatroom guest chatters.");
