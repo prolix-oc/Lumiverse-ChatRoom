@@ -1907,11 +1907,11 @@ function setup(ctx) {
   const fsBtn = iconBtn(`<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>`, "Fullscreen");
   const collapseBtn = iconBtn(`<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>`, "Collapse");
   const hideBtn = iconBtn(`<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`, "Hide");
-  let collapsedContextMenuOpen = false;
-  async function openCollapsedContextMenu(position) {
-    if (collapsedContextMenuOpen)
+  let widgetContextMenuOpen = false;
+  async function openWidgetContextMenu(position) {
+    if (widgetContextMenuOpen)
       return;
-    collapsedContextMenuOpen = true;
+    widgetContextMenuOpen = true;
     try {
       const result = await ctx.ui.showContextMenu({
         position,
@@ -1926,18 +1926,16 @@ function setup(ctx) {
         setWidgetVisible(false);
       }
     } finally {
-      collapsedContextMenuOpen = false;
+      widgetContextMenuOpen = false;
     }
   }
-  const handleCollapsedContextMenu = (e) => {
+  const handleWidgetContextMenu = (e) => {
     const mouseEvent = e;
-    if (!isCollapsed)
-      return;
     mouseEvent.preventDefault();
     mouseEvent.stopPropagation();
-    openCollapsedContextMenu({ x: mouseEvent.clientX, y: mouseEvent.clientY });
+    openWidgetContextMenu({ x: mouseEvent.clientX, y: mouseEvent.clientY });
   };
-  hostWrapper.addEventListener("contextmenu", handleCollapsedContextMenu, true);
+  hostWrapper.addEventListener("contextmenu", handleWidgetContextMenu, true);
   headerActions.appendChild(fsBtn);
   headerActions.appendChild(collapseBtn);
   headerActions.appendChild(hideBtn);

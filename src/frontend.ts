@@ -1251,10 +1251,18 @@ export function setup(ctx: SpindleFrontendContext) {
     'Hide'
   );
 
-  let collapsedContextMenuOpen = false;
-  async function openCollapsedContextMenu(position: { x: number; y: number }) {
-    if (collapsedContextMenuOpen) return;
-    collapsedContextMenuOpen = true;
+  // The host's built-in float-widget context menu ("Reset Position" / "Hide")
+  // only resizes the host's outer container. For a chromeless widget that owns
+  // its own shell (and pins the shell width), the host reset can't restore our
+  // width — it just repositions. The host also exposes no size-change
+  // notification, so we can't react to it either. Until that gap is closed
+  // (see docs/spindle-float-resize-gap.md), intercept the right-click in *all*
+  // states — not just while collapsed — and run our own reset, which resizes
+  // the shell correctly.
+  let widgetContextMenuOpen = false;
+  async function openWidgetContextMenu(position: { x: number; y: number }) {
+    if (widgetContextMenuOpen) return;
+    widgetContextMenuOpen = true;
     try {
       const result = await ctx.ui.showContextMenu({
         position,
@@ -1270,19 +1278,18 @@ export function setup(ctx: SpindleFrontendContext) {
         setWidgetVisible(false);
       }
     } finally {
-      collapsedContextMenuOpen = false;
+      widgetContextMenuOpen = false;
     }
   }
 
-  const handleCollapsedContextMenu = (e: Event) => {
+  const handleWidgetContextMenu = (e: Event) => {
     const mouseEvent = e as MouseEvent;
-    if (!isCollapsed) return;
     mouseEvent.preventDefault();
     mouseEvent.stopPropagation();
-    void openCollapsedContextMenu({ x: mouseEvent.clientX, y: mouseEvent.clientY });
+    void openWidgetContextMenu({ x: mouseEvent.clientX, y: mouseEvent.clientY });
   };
 
-  hostWrapper.addEventListener('contextmenu', handleCollapsedContextMenu, true);
+  hostWrapper.addEventListener('contextmenu', handleWidgetContextMenu, true);
 
   headerActions.appendChild(fsBtn);
   headerActions.appendChild(collapseBtn);
