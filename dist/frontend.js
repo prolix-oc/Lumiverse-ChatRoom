@@ -1408,6 +1408,9 @@ function setup(ctx) {
   const WIDGET_TRANSITION = prefersReducedMotion.matches ? "0ms linear" : "220ms cubic-bezier(0.22, 1, 0.36, 1)";
   const WIDGET_TRANSITION_FAST = prefersReducedMotion.matches ? "0ms linear" : "160ms cubic-bezier(0.4, 0, 0.2, 1)";
   const WIDGET_TRANSITION_MS = prefersReducedMotion.matches ? 0 : 220;
+  const MOBILE_ICON_COLLAPSED_SIZE = 68;
+  const MOBILE_HEADER_ICON_SIZE = 36;
+  const MOBILE_COLLAPSED_HEADER_ICON_SIZE = 44;
   function getDefaultWidgetSize() {
     return {
       width: isMobile ? Math.min(380, window.innerWidth - 16) : 440,
@@ -1607,6 +1610,18 @@ function setup(ctx) {
     shell.style.setProperty("height", height + "px", "important");
     sizedWidget.setSize?.(width, height);
   }
+  function getCollapsedWidgetSize(width) {
+    if (isMobile) {
+      return {
+        width: MOBILE_ICON_COLLAPSED_SIZE,
+        height: MOBILE_ICON_COLLAPSED_SIZE
+      };
+    }
+    return {
+      width,
+      height: header.offsetHeight
+    };
+  }
   const userWidgetState = {
     x: null,
     y: null,
@@ -1625,7 +1640,12 @@ function setup(ctx) {
     const y = userWidgetState.y ?? pos.y;
     expandedHeight = h;
     expandedWidth = w;
-    setWidgetSize(w, isCollapsed ? header.offsetHeight : h);
+    if (isCollapsed) {
+      const collapsedSize = getCollapsedWidgetSize(w);
+      setWidgetSize(collapsedSize.width, collapsedSize.height);
+    } else {
+      setWidgetSize(w, h);
+    }
     widget.moveTo(x, y);
     requestAnimationFrame(() => clampWidgetToViewport());
   }
@@ -1910,17 +1930,41 @@ function setup(ctx) {
   `;
   function syncHeaderSafeAreaPadding() {
     const useSafeAreaInsets = isFullscreen && isMobile;
-    header.style.paddingTop = useSafeAreaInsets ? "calc(14px + env(safe-area-inset-top, 0px))" : "14px";
-    header.style.paddingRight = useSafeAreaInsets ? "calc(18px + env(safe-area-inset-right, 0px))" : "18px";
-    header.style.paddingBottom = "14px";
-    header.style.paddingLeft = useSafeAreaInsets ? "calc(18px + env(safe-area-inset-left, 0px))" : "18px";
+    const compactIconOnlyHeader = isMobile && isCollapsed && !isFullscreen;
+    const basePadding = compactIconOnlyHeader ? { top: 12, right: 12, bottom: 12, left: 12 } : { top: 14, right: 18, bottom: 14, left: 18 };
+    header.style.paddingTop = useSafeAreaInsets ? `calc(${basePadding.top}px + env(safe-area-inset-top, 0px))` : `${basePadding.top}px`;
+    header.style.paddingRight = useSafeAreaInsets ? `calc(${basePadding.right}px + env(safe-area-inset-right, 0px))` : `${basePadding.right}px`;
+    header.style.paddingBottom = `${basePadding.bottom}px`;
+    header.style.paddingLeft = useSafeAreaInsets ? `calc(${basePadding.left}px + env(safe-area-inset-left, 0px))` : `${basePadding.left}px`;
   }
   syncHeaderSafeAreaPadding();
   const headerLeft = document.createElement("div");
   headerLeft.style.cssText = "display:flex;align-items:center;gap:10px;flex:1;min-width:0;";
   const headerIcon = document.createElement("div");
   headerIcon.innerHTML = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>`;
-  headerIcon.style.cssText = "display:flex;color:var(--lumiverse-primary);flex-shrink:0;";
+  headerIcon.style.cssText = `
+    display:flex;align-items:center;justify-content:center;
+    color:var(--lumiverse-primary);flex-shrink:0;
+    width:${isMobile ? MOBILE_HEADER_ICON_SIZE : 20}px;
+    height:${isMobile ? MOBILE_HEADER_ICON_SIZE : 20}px;
+    border-radius:${isMobile ? 12 : 0}px;
+    background:${isMobile ? "color-mix(in srgb, var(--lumiverse-fill-subtle) 84%, transparent)" : "transparent"};
+    border:${isMobile ? "1px solid color-mix(in srgb, var(--lumiverse-border) 82%, transparent)" : "none"};
+    cursor:${isMobile ? "pointer" : "inherit"};
+    transition:
+      width var(--lcs-chat-widget-transition, ${WIDGET_TRANSITION}),
+      height var(--lcs-chat-widget-transition, ${WIDGET_TRANSITION}),
+      border-radius var(--lcs-chat-widget-transition-fast, ${WIDGET_TRANSITION_FAST}),
+      background var(--lcs-chat-widget-transition-fast, ${WIDGET_TRANSITION_FAST}),
+      border-color var(--lcs-chat-widget-transition-fast, ${WIDGET_TRANSITION_FAST}),
+      box-shadow var(--lcs-chat-widget-transition-fast, ${WIDGET_TRANSITION_FAST});
+    touch-action:manipulation;
+  `;
+  if (isMobile) {
+    makeInteractive(headerIcon);
+    headerIcon.setAttribute("role", "button");
+    headerIcon.tabIndex = 0;
+  }
   const headerTextWrap = document.createElement("div");
   headerTextWrap.style.cssText = "display:flex;flex-direction:column;gap:1px;min-width:0;";
   const headerTitle = document.createElement("span");
@@ -2001,9 +2045,54 @@ function setup(ctx) {
   header.appendChild(headerLeft);
   header.appendChild(headerActions);
   widget.root.appendChild(header);
+  function syncHeaderChrome() {
+    const iconOnlyCollapsed = isMobile && isCollapsed && !isFullscreen;
+    syncHeaderSafeAreaPadding();
+    header.style.justifyContent = iconOnlyCollapsed ? "center" : "flex-start";
+    header.style.gap = iconOnlyCollapsed ? "0" : "12px";
+    header.style.borderBottom = iconOnlyCollapsed ? "none" : "1px solid var(--lumiverse-border)";
+    header.style.cursor = iconOnlyCollapsed ? "pointer" : "grab";
+    headerLeft.style.flex = iconOnlyCollapsed ? "0 0 auto" : "1";
+    headerLeft.style.gap = iconOnlyCollapsed ? "0" : "10px";
+    headerTextWrap.style.display = iconOnlyCollapsed ? "none" : "flex";
+    headerActions.style.display = iconOnlyCollapsed ? "none" : "flex";
+    const iconSize = isMobile ? iconOnlyCollapsed ? MOBILE_COLLAPSED_HEADER_ICON_SIZE : MOBILE_HEADER_ICON_SIZE : 20;
+    headerIcon.style.width = `${iconSize}px`;
+    headerIcon.style.height = `${iconSize}px`;
+    headerIcon.style.borderRadius = isMobile ? `${iconOnlyCollapsed ? 16 : 12}px` : "0";
+    headerIcon.style.background = isMobile ? "color-mix(in srgb, var(--lumiverse-fill-subtle) 84%, transparent)" : "transparent";
+    headerIcon.style.border = isMobile ? "1px solid color-mix(in srgb, var(--lumiverse-border) 82%, transparent)" : "none";
+    headerIcon.style.boxShadow = iconOnlyCollapsed ? "inset 0 1px 0 rgba(255,255,255,0.06)" : "none";
+    if (iconOnlyCollapsed) {
+      badge.style.position = "absolute";
+      badge.style.top = "8px";
+      badge.style.right = "8px";
+      badge.style.marginLeft = "0";
+      badge.style.zIndex = "1";
+      shell.style.setProperty("border-radius", "24px", "important");
+    } else {
+      badge.style.position = "static";
+      badge.style.top = "";
+      badge.style.right = "";
+      badge.style.marginLeft = "4px";
+      badge.style.zIndex = "";
+      if (!isFullscreen) {
+        shell.style.setProperty("border-radius", "20px", "important");
+      }
+    }
+    if (isMobile) {
+      const iconLabel = isCollapsed ? "Expand chatroom" : "Collapse chatroom";
+      headerIcon.title = iconLabel;
+      headerIcon.setAttribute("aria-label", iconLabel);
+      headerIcon.setAttribute("aria-expanded", String(!isCollapsed));
+    }
+  }
+  syncHeaderChrome();
   let isDragging = false;
   let dragStart = { x: 0, y: 0, wx: 0, wy: 0 };
   header.addEventListener("mousedown", (e) => {
+    if (isMobile && isCollapsed)
+      return;
     if (e.target.closest("button"))
       return;
     e.preventDefault();
@@ -2026,6 +2115,27 @@ function setup(ctx) {
     clampWidgetToViewport();
     persistWidgetState();
   });
+  if (isMobile) {
+    const handleHeaderIconToggle = (event) => {
+      event?.stopPropagation();
+      toggleCollapsedState();
+    };
+    headerIcon.addEventListener("click", (event) => handleHeaderIconToggle(event));
+    headerIcon.addEventListener("keydown", (event) => {
+      const keyboardEvent = event;
+      if (keyboardEvent.key !== "Enter" && keyboardEvent.key !== " ")
+        return;
+      keyboardEvent.preventDefault();
+      handleHeaderIconToggle(keyboardEvent);
+    });
+    header.addEventListener("click", (event) => {
+      if (!isCollapsed)
+        return;
+      if (event.target.closest("button"))
+        return;
+      toggleCollapsedState();
+    });
+  }
   const body = document.createElement("div");
   body.style.cssText = `
     flex:1;display:flex;flex-direction:column;overflow:hidden;min-height:0;
@@ -2831,13 +2941,18 @@ function setup(ctx) {
       hostWrapper.style.setProperty("height", h + "px", "important");
   }
   function updateCollapse() {
+    syncHeaderChrome();
     if (isCollapsed) {
+      if (chatInputFocused) {
+        inputField.blur();
+      }
       body.style.pointerEvents = "none";
       body.style.opacity = "0";
       body.style.transform = "translateY(-10px) scale(0.985)";
       collapseBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>`;
       collapseBtn.title = "Expand";
-      setWidgetSize(shell.offsetWidth, header.offsetHeight);
+      const collapsedSize = getCollapsedWidgetSize(expandedWidth || shell.offsetWidth);
+      setWidgetSize(collapsedSize.width, collapsedSize.height);
       syncHostWrapperSize();
       if (unreadCount > 0) {
         badge.textContent = unreadCount > 99 ? "99+" : String(unreadCount);
@@ -2857,7 +2972,7 @@ function setup(ctx) {
     }
     requestAnimationFrame(() => clampWidgetToViewport());
   }
-  collapseBtn.addEventListener("click", () => {
+  function toggleCollapsedState() {
     if (syncFullscreenStateFromHost()) {
       fsBtn.click();
     }
@@ -2868,6 +2983,9 @@ function setup(ctx) {
     isCollapsed = !isCollapsed;
     updateCollapse();
     persistWidgetState();
+  }
+  collapseBtn.addEventListener("click", () => {
+    toggleCollapsedState();
   });
   const supportsNativeFullscreen = typeof widget.setFullscreen === "function";
   fsBtn.addEventListener("click", () => {
