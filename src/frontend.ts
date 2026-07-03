@@ -2985,6 +2985,7 @@ export function setup(ctx: SpindleFrontendContext) {
       if (mentionQuery != null) {
         refreshMentionResults();
       }
+      refreshVirtualizer(false, 'auto');
     } else if (payload.type === 'generation_started') {
       isGenerating = true;
       genButton.disabled = true;

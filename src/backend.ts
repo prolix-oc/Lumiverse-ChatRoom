@@ -22,6 +22,11 @@ interface ChatParticipant {
   source: 'council' | 'character';
 }
 
+interface FrontendMember {
+  name: string;
+  avatarUrl: string | null;
+}
+
 // Per-user runtime state for message-based triggering
 interface UserChatroomState {
   autoReply: boolean;
@@ -230,6 +235,69 @@ async function getCouncilMembers(userId: string) {
   return spindle.council.getMembers({ userId });
 }
 
+function slugifyName(name: string) {
+  return name
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+function normalizeOutgoingMentions(
+  rawText: string,
+  members: FrontendMember[],
+  hintedMentionedNames: string[] = [],
+): { content: string; mentionedMemberNames: string[] } {
+  const slugToMember = new Map<string, FrontendMember>();
+  const nameToMember = new Map<string, FrontendMember>();
+
+  for (const member of members) {
+    const name = typeof member?.name === 'string' ? member.name.trim() : '';
+    if (!name) continue;
+
+    const normalizedMember: FrontendMember = {
+      name,
+      avatarUrl: member.avatarUrl || null,
+    };
+    const slug = slugifyName(name);
+    if (slug && !slugToMember.has(slug)) {
+      slugToMember.set(slug, normalizedMember);
+    }
+    if (!nameToMember.has(name.toLowerCase())) {
+      nameToMember.set(name.toLowerCase(), normalizedMember);
+    }
+  }
+
+  const mentionedMemberNames: string[] = [];
+  const seen = new Set<string>();
+
+  const rememberName = (rawName: string) => {
+    const name = rawName.trim();
+    if (!name) return;
+
+    const matchedMember = nameToMember.get(name.toLowerCase());
+    const canonicalName = matchedMember?.name || name;
+    const key = canonicalName.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    mentionedMemberNames.push(canonicalName);
+  };
+
+  const content = rawText.replace(/(^|\s)@([a-z0-9][a-z0-9-]*)(?=\s|$|[.,!?;:])/gi, (_match, lead: string, rawSlug: string) => {
+    const member = slugToMember.get(rawSlug.toLowerCase());
+    if (!member) return `${lead}@${rawSlug}`;
+    rememberName(member.name);
+    return `${lead}@${member.name}`;
+  });
+
+  for (const hintedName of hintedMentionedNames) {
+    rememberName(hintedName);
+  }
+
+  return { content, mentionedMemberNames };
+}
+
 function clampText(text: string, max: number): string {
   const normalized = text.replace(/\s+/g, ' ').trim();
   return normalized.length > max ? `${normalized.slice(0, max).trimEnd()}…` : normalized;
@@ -298,7 +366,7 @@ async function getChatParticipants(userId: string, chatId: string | null): Promi
 
 // Frontend-facing participant list (name + avatar) used for mention
 // autocomplete and avatar rendering in the widget.
-async function getFrontendMembers(userId: string, chatId: string | null): Promise<Array<{ name: string; avatarUrl: string | null }>> {
+async function getFrontendMembers(userId: string, chatId: string | null): Promise<FrontendMember[]> {
   return (await getChatParticipants(userId, chatId)).map(p => ({ name: p.name, avatarUrl: p.avatarUrl }));
 }
 
@@ -908,7 +976,7 @@ spindle.onFrontendMessage(async (payload: any, userId) => {
 
     // Populated below once the active chat is known (members + guest chatters
     // are per-chat).
-    let councilMembers: Array<{ name: string; avatarUrl: string | null }> = [];
+    let councilMembers: FrontendMember[] = [];
     let selectedCharacterIds: string[] = [];
 
     const state = getUserState(resolvedUserId);
@@ -1027,7 +1095,7 @@ spindle.onFrontendMessage(async (payload: any, userId) => {
     const history = await getChatroomHistory(activeChatId, resolvedUserId);
     const chatroomName = settings.chatroomNames?.[activeChatId] ?? null;
     const selectedCharacterIds = settings.chatroomCharacterIds?.[activeChatId] ?? [];
-    let councilMembers: Array<{ name: string; avatarUrl: string | null }> = [];
+    let councilMembers: FrontendMember[] = [];
     try {
       councilMembers = await getFrontendMembers(resolvedUserId, activeChatId);
     } catch (e) {
@@ -1066,12 +1134,25 @@ spindle.onFrontendMessage(async (payload: any, userId) => {
     }
 
     const chatId = activeChat.id;
+    let frontendMembers: FrontendMember[] = [];
+    try {
+      frontendMembers = await getFrontendMembers(resolvedUserId, chatId);
+      spindle.sendToFrontend({ type: 'members_updated', councilMembers: frontendMembers }, resolvedUserId);
+    } catch (e) {
+      spindle.log.warn('Could not refresh chat participants before handling user message.');
+    }
+
+    const hintedMentionedNames = Array.isArray(payload.mentionedMemberNames)
+      ? payload.mentionedMemberNames.filter((name: unknown): name is string => typeof name === 'string' && name.trim().length > 0)
+      : [];
+    const rawContent = typeof payload.content === 'string' ? payload.content : '';
+    const { content, mentionedMemberNames } = normalizeOutgoingMentions(rawContent, frontendMembers, hintedMentionedNames);
     const chatroomHistory = await getChatroomHistory(chatId, resolvedUserId);
 
     chatroomHistory.push({
       name: personaName,
       username: personaName,
-      content: payload.content,
+      content,
       avatarUrl: personaAvatar,
       isUser: true,
       ts: Date.now()
@@ -1083,16 +1164,14 @@ spindle.onFrontendMessage(async (payload: any, userId) => {
       type: 'new_message',
       name: personaName,
       username: personaName,
-      content: payload.content,
+      content,
       avatarUrl: personaAvatar,
       isUser: true,
       clientMessageId: payload.clientMessageId || undefined,
     }, resolvedUserId);
 
     await runCouncilGeneration(resolvedUserId, {
-      requiredSpeakerNames: Array.isArray(payload.mentionedMemberNames)
-        ? payload.mentionedMemberNames.filter((name: unknown): name is string => typeof name === 'string' && name.trim().length > 0)
-        : [],
+      requiredSpeakerNames: mentionedMemberNames,
     });
     return;
   }
@@ -1116,14 +1195,11 @@ spindle.onFrontendMessage(async (payload: any, userId) => {
       }
 
       await spindle.variables.chat.delete(activeChat.id, getChatroomHistoryKey(resolvedUserId));
-      let councilMembers: Array<{ name: string; avatarUrl: string | null }> = [];
+      let councilMembers: FrontendMember[] = [];
       try {
-        councilMembers = (await getCouncilMembers(resolvedUserId)).map(member => ({
-          name: member.name,
-          avatarUrl: member.avatarUrl || null,
-        }));
+        councilMembers = await getFrontendMembers(resolvedUserId, activeChat.id);
       } catch (e) {
-        spindle.log.warn('Could not fetch council members after clearing history.');
+        spindle.log.warn('Could not fetch chat participants after clearing history.');
       }
       const settings = await loadPersistedSettings(resolvedUserId);
       spindle.sendToFrontend({
@@ -1206,14 +1282,11 @@ spindle.on('SETTINGS_UPDATED', async (payload: any, userId?: string) => {
     const history = await getChatroomHistory(newChatId, resolvedUserId);
     const settings = await loadPersistedSettings(resolvedUserId);
     const chatroomName = settings.chatroomNames?.[newChatId];
-    let councilMembers: Array<{ name: string; avatarUrl: string | null }> = [];
+    let councilMembers: FrontendMember[] = [];
     try {
-      councilMembers = (await getCouncilMembers(resolvedUserId)).map(member => ({
-        name: member.name,
-        avatarUrl: member.avatarUrl || null,
-      }));
+      councilMembers = await getFrontendMembers(resolvedUserId, newChatId);
     } catch (e) {
-      spindle.log.warn('Could not fetch council members after chat switch.');
+      spindle.log.warn('Could not fetch chat participants after chat switch.');
     }
     spindle.sendToFrontend({ type: 'chat_changed', history, councilMembers, chatroomName: chatroomName || undefined }, resolvedUserId);
   }
