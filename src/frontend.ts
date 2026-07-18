@@ -65,6 +65,7 @@ export function setup(ctx: SpindleFrontendContext) {
   // Lumiverse 1.0.6+ can explicitly release queued startup events once the
   // frontend has registered its handlers and issued its initial requests.
   const readyGate = createReadyGate(ctx);
+  const isMobile = window.innerWidth <= 768 || 'ontouchstart' in window;
   // ── 1. Settings Drawer Tab ──
   const tab = ctx.ui.registerDrawerTab({
     id: 'chatroom_settings',
@@ -194,6 +195,21 @@ export function setup(ctx: SpindleFrontendContext) {
   configHeader.appendChild(configHeaderIcon);
   configHeader.appendChild(configTitle);
   configCard.appendChild(configHeader);
+
+  // Desktop users can opt into the same compact circular widget used on
+  // mobile when the chatroom is collapsed.
+  const compactWidgetShapeCheckbox = !isMobile ? (() => {
+    const compactWidgetShapeMount = document.createElement('div');
+    configCard.appendChild(createSettingRow(
+      'Collapsed Widget Shape',
+      'Use the compact circular mobile-style widget when the chatroom is collapsed.',
+      compactWidgetShapeMount
+    ));
+    return ctx.components.mountCheckbox(compactWidgetShapeMount, {
+      checked: false,
+      label: 'Use compact mobile-style shape',
+    });
+  })() : null;
 
   // Chatroom Name (per-chat decorative)
   const chatroomNameMount = document.createElement('div');
@@ -591,6 +607,10 @@ export function setup(ctx: SpindleFrontendContext) {
   saveBtn.addEventListener('mouseup', () => saveBtn.style.transform = 'none');
   saveBtn.addEventListener('click', () => {
     const topKOn = topKEnabledCheckbox.getValue();
+    const useCompactWidgetShape = compactWidgetShapeCheckbox?.getValue();
+    if (typeof useCompactWidgetShape === 'boolean') {
+      setCompactWidgetShape(useCompactWidgetShape);
+    }
     ctx.sendToBackend({
       type: 'save_settings',
       triggerMode: triggerModeSelect.getValue(),
@@ -613,6 +633,7 @@ export function setup(ctx: SpindleFrontendContext) {
       personaId: personaSelect.getValue(),
       characterIds: otherChattersSelect.getValue(),
       chatroomName: chatroomNameInput.getValue().trim(),
+      compactWidgetShape: useCompactWidgetShape,
     });
   });
 
@@ -651,7 +672,8 @@ export function setup(ctx: SpindleFrontendContext) {
   tab.root.appendChild(settingsContainer);
 
   // ── 2. Float Widget UI ──
-  const isMobile = window.innerWidth <= 768 || 'ontouchstart' in window;
+  let compactWidgetShape = false;
+  const usesCompactWidgetShape = () => isMobile || compactWidgetShape;
   const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
   const WIDGET_TRANSITION = prefersReducedMotion.matches
     ? '0ms linear'
@@ -896,7 +918,7 @@ export function setup(ctx: SpindleFrontendContext) {
   }
 
   function getCollapsedWidgetSize(width: number) {
-    if (isMobile) {
+    if (usesCompactWidgetShape()) {
       return {
         width: MOBILE_ICON_COLLAPSED_SIZE,
         height: MOBILE_ICON_COLLAPSED_SIZE,
@@ -1258,7 +1280,7 @@ export function setup(ctx: SpindleFrontendContext) {
 
   function syncHeaderSafeAreaPadding() {
     const useSafeAreaInsets = isFullscreen && isMobile;
-    const compactIconOnlyHeader = isMobile && isCollapsed && !isFullscreen;
+    const compactIconOnlyHeader = usesCompactWidgetShape() && isCollapsed && !isFullscreen;
     const basePadding = compactIconOnlyHeader
       ? { top: 12, right: 12, bottom: 12, left: 12 }
       : { top: 14, right: 18, bottom: 14, left: 18 };
@@ -1284,12 +1306,12 @@ export function setup(ctx: SpindleFrontendContext) {
   headerIcon.style.cssText = `
     display:flex;align-items:center;justify-content:center;
     color:var(--lumiverse-primary);flex-shrink:0;
-    width:${isMobile ? MOBILE_HEADER_ICON_SIZE : 20}px;
-    height:${isMobile ? MOBILE_HEADER_ICON_SIZE : 20}px;
-    border-radius:${isMobile ? 12 : 0}px;
-    background:${isMobile ? 'color-mix(in srgb, var(--lumiverse-fill-subtle) 84%, transparent)' : 'transparent'};
-    border:${isMobile ? '1px solid color-mix(in srgb, var(--lumiverse-border) 82%, transparent)' : 'none'};
-    cursor:${isMobile ? 'pointer' : 'inherit'};
+    width:${usesCompactWidgetShape() ? MOBILE_HEADER_ICON_SIZE : 20}px;
+    height:${usesCompactWidgetShape() ? MOBILE_HEADER_ICON_SIZE : 20}px;
+    border-radius:${usesCompactWidgetShape() ? 12 : 0}px;
+    background:${usesCompactWidgetShape() ? 'color-mix(in srgb, var(--lumiverse-fill-subtle) 84%, transparent)' : 'transparent'};
+    border:${usesCompactWidgetShape() ? '1px solid color-mix(in srgb, var(--lumiverse-border) 82%, transparent)' : 'none'};
+    cursor:${usesCompactWidgetShape() ? 'pointer' : 'inherit'};
     transition:
       width var(--lcs-chat-widget-transition, ${WIDGET_TRANSITION}),
       height var(--lcs-chat-widget-transition, ${WIDGET_TRANSITION}),
@@ -1299,12 +1321,6 @@ export function setup(ctx: SpindleFrontendContext) {
       box-shadow var(--lcs-chat-widget-transition-fast, ${WIDGET_TRANSITION_FAST});
     touch-action:manipulation;
   `;
-  if (isMobile) {
-    makeInteractive(headerIcon);
-    headerIcon.setAttribute('role', 'button');
-    headerIcon.tabIndex = 0;
-  }
-
   const headerTextWrap = document.createElement('div');
   headerTextWrap.style.cssText = 'display:flex;flex-direction:column;gap:1px;min-width:0;';
 
@@ -1410,13 +1426,15 @@ export function setup(ctx: SpindleFrontendContext) {
   widget.root.appendChild(header);
 
   function syncHeaderChrome() {
-    const iconOnlyCollapsed = isMobile && isCollapsed && !isFullscreen;
+    const compactShape = usesCompactWidgetShape();
+    const iconOnlyCollapsed = compactShape && isCollapsed && !isFullscreen;
 
     syncHeaderSafeAreaPadding();
     header.style.justifyContent = iconOnlyCollapsed ? 'center' : 'flex-start';
     header.style.gap = iconOnlyCollapsed ? '0' : '12px';
     header.style.borderBottom = iconOnlyCollapsed ? 'none' : '1px solid var(--lumiverse-border)';
     header.style.cursor = iconOnlyCollapsed ? 'pointer' : 'grab';
+    header.style.touchAction = iconOnlyCollapsed ? 'none' : 'auto';
 
     headerLeft.style.flex = iconOnlyCollapsed ? '0 0 auto' : '1';
     headerLeft.style.gap = iconOnlyCollapsed ? '0' : '10px';
@@ -1424,16 +1442,16 @@ export function setup(ctx: SpindleFrontendContext) {
     headerTextWrap.style.display = iconOnlyCollapsed ? 'none' : 'flex';
     headerActions.style.display = iconOnlyCollapsed ? 'none' : 'flex';
 
-    const iconSize = isMobile
+    const iconSize = compactShape
       ? (iconOnlyCollapsed ? MOBILE_COLLAPSED_HEADER_ICON_SIZE : MOBILE_HEADER_ICON_SIZE)
       : 20;
     headerIcon.style.width = `${iconSize}px`;
     headerIcon.style.height = `${iconSize}px`;
-    headerIcon.style.borderRadius = isMobile ? `${iconOnlyCollapsed ? 16 : 12}px` : '0';
-    headerIcon.style.background = isMobile
+    headerIcon.style.borderRadius = compactShape ? `${iconOnlyCollapsed ? 16 : 12}px` : '0';
+    headerIcon.style.background = compactShape
       ? 'color-mix(in srgb, var(--lumiverse-fill-subtle) 84%, transparent)'
       : 'transparent';
-    headerIcon.style.border = isMobile
+    headerIcon.style.border = compactShape
       ? '1px solid color-mix(in srgb, var(--lumiverse-border) 82%, transparent)'
       : 'none';
     headerIcon.style.boxShadow = iconOnlyCollapsed
@@ -1458,11 +1476,19 @@ export function setup(ctx: SpindleFrontendContext) {
       }
     }
 
-    if (isMobile) {
+    if (compactShape) {
       const iconLabel = isCollapsed ? 'Expand chatroom' : 'Collapse chatroom';
       headerIcon.title = iconLabel;
       headerIcon.setAttribute('aria-label', iconLabel);
       headerIcon.setAttribute('aria-expanded', String(!isCollapsed));
+      headerIcon.setAttribute('role', 'button');
+      headerIcon.tabIndex = 0;
+    } else {
+      headerIcon.removeAttribute('title');
+      headerIcon.removeAttribute('aria-label');
+      headerIcon.removeAttribute('aria-expanded');
+      headerIcon.removeAttribute('role');
+      headerIcon.removeAttribute('tabindex');
     }
   }
 
@@ -1472,7 +1498,11 @@ export function setup(ctx: SpindleFrontendContext) {
   let isDragging = false;
   let dragStart = { x: 0, y: 0, wx: 0, wy: 0 };
   header.addEventListener('mousedown', (e) => {
-    if (isMobile && isCollapsed) return;
+    if (usesCompactWidgetShape() && isCollapsed) {
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
     if ((e.target as HTMLElement).closest('button')) return;
     e.preventDefault();
     e.stopPropagation();
@@ -1493,26 +1523,113 @@ export function setup(ctx: SpindleFrontendContext) {
     persistWidgetState();
   });
 
-  if (isMobile) {
-    const handleHeaderIconToggle = (event?: Event) => {
-      event?.stopPropagation();
-      toggleCollapsedState();
+  // The compact widget needs one interaction owner for the whole circle.
+  // Previously its center icon stopped the host drag, leaving only the outer
+  // padding responsive. A short press now expands it; moving past the small
+  // threshold drags it from the center or edge alike.
+  const COMPACT_WIDGET_DRAG_THRESHOLD = 5;
+  let compactWidgetPointer: {
+    pointerId: number;
+    startX: number;
+    startY: number;
+    widgetX: number;
+    widgetY: number;
+    moved: boolean;
+  } | null = null;
+  let ignoreCompactIconClick = false;
+
+  const isCompactCollapsed = () => usesCompactWidgetShape() && isCollapsed && !isFullscreen;
+
+  const stopCompactHostDrag = (event: Event) => {
+    if (!isCompactCollapsed()) return;
+    event.preventDefault();
+    event.stopPropagation();
+  };
+
+  header.addEventListener('touchstart', stopCompactHostDrag, { capture: true, passive: false });
+  header.addEventListener('mousedown', stopCompactHostDrag, true);
+
+  header.addEventListener('pointerdown', (event) => {
+    if (!isCompactCollapsed()) return;
+    if (event.pointerType === 'mouse' && event.button !== 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+
+    const position = widget.getPosition();
+    compactWidgetPointer = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      widgetX: position.x,
+      widgetY: position.y,
+      moved: false,
     };
+    try { header.setPointerCapture(event.pointerId); } catch (_) {}
+  }, true);
 
-    headerIcon.addEventListener('click', (event) => handleHeaderIconToggle(event));
-    headerIcon.addEventListener('keydown', (event) => {
-      const keyboardEvent = event as KeyboardEvent;
-      if (keyboardEvent.key !== 'Enter' && keyboardEvent.key !== ' ') return;
-      keyboardEvent.preventDefault();
-      handleHeaderIconToggle(keyboardEvent);
-    });
+  header.addEventListener('pointermove', (event) => {
+    const pointer = compactWidgetPointer;
+    if (!pointer || pointer.pointerId !== event.pointerId) return;
+    event.preventDefault();
+    event.stopPropagation();
 
-    header.addEventListener('click', (event) => {
-      if (!isCollapsed) return;
-      if ((event.target as HTMLElement).closest('button')) return;
+    const dx = event.clientX - pointer.startX;
+    const dy = event.clientY - pointer.startY;
+    if (!pointer.moved && Math.hypot(dx, dy) >= COMPACT_WIDGET_DRAG_THRESHOLD) {
+      pointer.moved = true;
+    }
+    if (pointer.moved) {
+      widget.moveTo(pointer.widgetX + dx, pointer.widgetY + dy);
+    }
+  }, true);
+
+  const finishCompactWidgetPointer = (event: PointerEvent, cancelled = false) => {
+    const pointer = compactWidgetPointer;
+    if (!pointer || pointer.pointerId !== event.pointerId) return;
+    compactWidgetPointer = null;
+    event.preventDefault();
+    event.stopPropagation();
+    try { header.releasePointerCapture(event.pointerId); } catch (_) {}
+
+    // A drag can still produce a synthetic click when it began on the icon.
+    // It must not collapse the widget immediately after being moved.
+    ignoreCompactIconClick = true;
+    window.setTimeout(() => { ignoreCompactIconClick = false; }, 0);
+
+    if (pointer.moved) {
+      clampWidgetToViewport();
+      persistWidgetState();
+    } else if (!cancelled) {
+      // The tap has already toggled the widget here.
       toggleCollapsedState();
-    });
-  }
+    }
+  };
+
+  header.addEventListener('pointerup', (event) => finishCompactWidgetPointer(event), true);
+  header.addEventListener('pointercancel', (event) => finishCompactWidgetPointer(event, true), true);
+
+  const stopHeaderIconDragInit = (event: Event) => {
+    if (!usesCompactWidgetShape()) return;
+    event.stopPropagation();
+  };
+  headerIcon.addEventListener('mousedown', stopHeaderIconDragInit, false);
+  headerIcon.addEventListener('pointerdown', stopHeaderIconDragInit, false);
+  headerIcon.addEventListener('touchstart', stopHeaderIconDragInit, { passive: true, capture: false });
+  headerIcon.addEventListener('click', (event) => {
+    if (!usesCompactWidgetShape()) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (ignoreCompactIconClick) return;
+    toggleCollapsedState();
+  });
+  headerIcon.addEventListener('keydown', (event) => {
+    if (!usesCompactWidgetShape()) return;
+    const keyboardEvent = event as KeyboardEvent;
+    if (keyboardEvent.key !== 'Enter' && keyboardEvent.key !== ' ') return;
+    keyboardEvent.preventDefault();
+    keyboardEvent.stopPropagation();
+    toggleCollapsedState();
+  });
 
   // ── Body ──
   const body = document.createElement('div');
@@ -2505,6 +2622,16 @@ export function setup(ctx: SpindleFrontendContext) {
     requestAnimationFrame(() => clampWidgetToViewport());
   }
 
+  function setCompactWidgetShape(enabled: boolean) {
+    if (isMobile || compactWidgetShape === enabled) return;
+    compactWidgetShape = enabled;
+    if (isCollapsed) {
+      updateCollapse();
+    } else {
+      syncHeaderChrome();
+    }
+  }
+
   function toggleCollapsedState() {
     // If we're fullscreen, exit fullscreen before collapsing so the host
     // doesn't fight our height override.
@@ -2852,6 +2979,11 @@ export function setup(ctx: SpindleFrontendContext) {
       topKEnabledCheckbox.update({ checked: payload.topKEnabled ?? false });
       topKInput.update({ value: payload.topK ?? 0 });
       maxResponseTokensInput.update({ value: payload.maxResponseTokens ?? null });
+      if (compactWidgetShapeCheckbox) {
+        const useCompactWidgetShape = payload.compactWidgetShape ?? false;
+        compactWidgetShapeCheckbox.update({ checked: useCompactWidgetShape });
+        setCompactWidgetShape(useCompactWidgetShape);
+      }
 
       triggerMode = payload.triggerMode ?? 'time';
       messageInterval = payload.messageInterval ?? 10;
@@ -3044,6 +3176,7 @@ export function setup(ctx: SpindleFrontendContext) {
     unsubKeyboard();
     for (const handle of [
       chatroomNameInput,
+      ...(compactWidgetShapeCheckbox ? [compactWidgetShapeCheckbox] : []),
       connectionSelect,
       personaSelect,
       triggerModeSelect,

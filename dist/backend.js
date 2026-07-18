@@ -641,6 +641,9 @@ spindle.onFrontendMessage(async (payload, userId) => {
         messageCountMax: payload.messageCountMax ?? 7,
         personaId: typeof payload.personaId === "string" && payload.personaId.trim() ? payload.personaId.trim() : undefined
       };
+      if (typeof payload.compactWidgetShape === "boolean") {
+        next.compactWidgetShape = payload.compactWidgetShape;
+      }
       if (state.currentChatId) {
         next.chatroomNames = {
           ...settings.chatroomNames ?? {},
@@ -811,6 +814,7 @@ spindle.onFrontendMessage(async (payload, userId) => {
       widgetW: settings.widgetW ?? null,
       widgetH: settings.widgetH ?? null,
       widgetCollapsed: settings.widgetCollapsed ?? false,
+      compactWidgetShape: settings.compactWidgetShape ?? false,
       chatroomName: chatroomName || undefined
     }, resolvedUserId);
     return;

@@ -65,6 +65,7 @@ interface PersistedChatroomSettings {
   widgetW?: number;
   widgetH?: number;
   widgetCollapsed?: boolean;
+  compactWidgetShape?: boolean;
   chatroomNames?: Record<string, string>;
   personaId?: string;
   // Guest character cards added as chatters, keyed by chat id (per-chat).
@@ -862,6 +863,10 @@ spindle.onFrontendMessage(async (payload: any, userId) => {
         personaId: typeof payload.personaId === 'string' && payload.personaId.trim() ? payload.personaId.trim() : undefined,
       };
 
+      if (typeof payload.compactWidgetShape === 'boolean') {
+        next.compactWidgetShape = payload.compactWidgetShape;
+      }
+
       if (state.currentChatId) {
         next.chatroomNames = {
           ...(settings.chatroomNames ?? {}),
@@ -1058,6 +1063,7 @@ spindle.onFrontendMessage(async (payload: any, userId) => {
       widgetW: settings.widgetW ?? null,
       widgetH: settings.widgetH ?? null,
       widgetCollapsed: settings.widgetCollapsed ?? false,
+      compactWidgetShape: settings.compactWidgetShape ?? false,
       chatroomName: chatroomName || undefined,
     }, resolvedUserId);
     return;
