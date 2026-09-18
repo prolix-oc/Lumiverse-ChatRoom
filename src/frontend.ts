@@ -1,5 +1,10 @@
 import { Virtualizer, elementScroll, observeElementOffset, observeElementRect } from '@tanstack/virtual-core';
 import type { SpindleFrontendContext } from 'lumiverse-spindle-types';
+import {
+  getChatRoomDefaultWidgetSize,
+  getChatRoomInitialWidgetSize,
+  getChatRoomWidgetResizeBounds,
+} from './widget-layout';
 
 const READY_MIN_VERSION = [1, 0, 6] as const;
 
@@ -65,7 +70,13 @@ export function setup(ctx: SpindleFrontendContext) {
   // Lumiverse 1.0.6+ can explicitly release queued startup events once the
   // frontend has registered its handlers and issued its initial requests.
   const readyGate = createReadyGate(ctx);
-  const isMobile = window.innerWidth <= 768 || 'ontouchstart' in window;
+  const desktopWidgetParams = new URLSearchParams(window.location.search);
+  const isDesktopWidgetPopout =
+    '__TAURI_INTERNALS__' in window && desktopWidgetParams.has('desktopWidgetExtension');
+  const requestedDesktopWidgetWidth = Number(desktopWidgetParams.get('desktopWidgetWidth')) || null;
+  const requestedDesktopWidgetHeight = Number(desktopWidgetParams.get('desktopWidgetHeight')) || null;
+  const isMobile =
+    !isDesktopWidgetPopout && (window.innerWidth <= 768 || 'ontouchstart' in window);
   // ── 1. Settings Drawer Tab ──
   const tab = ctx.ui.registerDrawerTab({
     id: 'chatroom_settings',
@@ -687,13 +698,15 @@ export function setup(ctx: SpindleFrontendContext) {
   const MOBILE_COLLAPSED_HEADER_ICON_SIZE = 44;
 
   function getDefaultWidgetSize() {
-    return {
-      width: isMobile ? Math.min(380, window.innerWidth - 16) : 440,
-      height: isMobile ? Math.min(540, window.innerHeight - 80) : 620,
-    };
+    return getChatRoomDefaultWidgetSize({
+      isMobile,
+      viewportWidth: window.innerWidth,
+      viewportHeight: window.innerHeight,
+    });
   }
 
   function getDefaultWidgetPosition() {
+    if (isDesktopWidgetPopout) return { x: 0, y: 0 };
     return {
       x: isMobile ? 8 : window.innerWidth - 480,
       y: isMobile ? 40 : window.innerHeight - 660,
@@ -701,15 +714,22 @@ export function setup(ctx: SpindleFrontendContext) {
   }
 
   const defaultWidgetSize = getDefaultWidgetSize();
+  const initialWidgetSize = getChatRoomInitialWidgetSize({
+    isDesktopWidgetPopout,
+    requestedWidth: requestedDesktopWidgetWidth,
+    requestedHeight: requestedDesktopWidgetHeight,
+    fallback: defaultWidgetSize,
+  });
   const defaultWidgetPosition = getDefaultWidgetPosition();
 
   function isInChatView() {
+    if (isDesktopWidgetPopout) return true;
     return /^\/chat\/[^/]+/.test(window.location.pathname);
   }
 
   const widget = ctx.ui.createFloatWidget({
-    width: defaultWidgetSize.width,
-    height: defaultWidgetSize.height,
+    width: initialWidgetSize.width,
+    height: initialWidgetSize.height,
     initialPosition: defaultWidgetPosition,
     snapToEdge: true,
     tooltip: 'Council Chatroom',
@@ -785,9 +805,11 @@ export function setup(ctx: SpindleFrontendContext) {
   }
   let isCollapsed = false;
   let isFullscreen = false;
+  let widgetSettingsRestored = false;
+  let nativeResizePersistTimer: number | null = null;
   let preFullscreenState: { w: number; h: number; x: number; y: number } | null = null;
-  let expandedHeight = 620;
-  let expandedWidth = 440;
+  let expandedHeight = defaultWidgetSize.height;
+  let expandedWidth = defaultWidgetSize.width;
   let unreadCount = 0;
   let lastSenderId: string | null = null;
   let userPersona: { name: string; avatarUrl: string | null } | null = null;
@@ -887,7 +909,11 @@ export function setup(ctx: SpindleFrontendContext) {
 
   // The host's widget container is the outer positioned wrapper around widget.root.
   // With chromeless: true it's typically widget.root's immediate parent.
-  const shell = (widget.root.parentElement as HTMLElement) || widget.root;
+  // Native popouts reparent widget.root into their dedicated window host, so
+  // that root must own the visual sizing rather than its now-detached parent.
+  const shell = isDesktopWidgetPopout
+    ? widget.root
+    : (widget.root.parentElement as HTMLElement) || widget.root;
 
   // Find the actual outermost host wrapper (the one the host positions/moves)
   function getHostWrapper(): HTMLElement {
@@ -897,7 +923,7 @@ export function setup(ctx: SpindleFrontendContext) {
     }
     return el;
   }
-  const hostWrapper = getHostWrapper();
+  const hostWrapper = isDesktopWidgetPopout ? shell : getHostWrapper();
   const sizedWidget = widget as typeof widget & {
     setSize?: (width: number, height: number) => void;
     isFullscreen?: () => boolean;
@@ -1148,14 +1174,16 @@ export function setup(ctx: SpindleFrontendContext) {
     if (isMobile) return;
     const pos = widget.getPosition();
     const persistedHeight = isCollapsed ? expandedHeight : shell.offsetHeight;
-    userWidgetState.x = pos.x;
-    userWidgetState.y = pos.y;
+    if (!isDesktopWidgetPopout) {
+      userWidgetState.x = pos.x;
+      userWidgetState.y = pos.y;
+    }
     userWidgetState.w = expandedWidth;
     userWidgetState.h = persistedHeight;
     ctx.sendToBackend({
       type: 'save_widget_state',
-      x: pos.x,
-      y: pos.y,
+      x: isDesktopWidgetPopout ? undefined : pos.x,
+      y: isDesktopWidgetPopout ? undefined : pos.y,
       w: expandedWidth,
       h: persistedHeight,
       collapsed: isCollapsed,
@@ -1171,7 +1199,7 @@ export function setup(ctx: SpindleFrontendContext) {
   }
 
   function clampWidgetToViewport() {
-    if (isFullscreen) return;
+    if (isFullscreen || isDesktopWidgetPopout) return;
     const pos = widget.getPosition();
     const rect = shell.getBoundingClientRect();
     let nx = pos.x;
@@ -2524,10 +2552,16 @@ export function setup(ctx: SpindleFrontendContext) {
   let resizeAnchor = { x: 0, y: 0 };
   let rafId: number | null = null;
 
-  const WIDGET_MIN_W = isMobile ? 260 : 320;
-  const WIDGET_MIN_H = isMobile ? 120 : 180;
-  const WIDGET_MAX_W = Math.min(900, window.innerWidth - (isMobile ? 8 : 32));
-  const WIDGET_MAX_H = Math.min(1000, window.innerHeight - (isMobile ? 32 : 64));
+  const widgetResizeBounds = getChatRoomWidgetResizeBounds({
+    isDesktopWidgetPopout,
+    isMobile,
+    viewportWidth: window.innerWidth,
+    viewportHeight: window.innerHeight,
+  });
+  const WIDGET_MIN_W = widgetResizeBounds.minWidth;
+  const WIDGET_MIN_H = widgetResizeBounds.minHeight;
+  const WIDGET_MAX_W = widgetResizeBounds.maxWidth;
+  const WIDGET_MAX_H = widgetResizeBounds.maxHeight;
 
   function startResize(clientX: number, clientY: number) {
     const pos = widget.getPosition();
@@ -2727,6 +2761,29 @@ export function setup(ctx: SpindleFrontendContext) {
       return;
     }
     if (isFullscreen) return;
+    if (isDesktopWidgetPopout) {
+      // Native edge-resizing changes the WebView viewport directly. Reflect
+      // that size into the reparented widget root and its persisted expanded
+      // dimensions, but keep the compact visual shell while collapsed.
+      if (!widgetSettingsRestored || isCollapsed) return;
+      const width = Math.max(WIDGET_MIN_W, Math.min(WIDGET_MAX_W, Math.round(window.innerWidth)));
+      const height = Math.max(WIDGET_MIN_H, Math.min(WIDGET_MAX_H, Math.round(window.innerHeight)));
+      shell.style.setProperty('width', width + 'px', 'important');
+      shell.style.setProperty('height', height + 'px', 'important');
+      if (width !== Math.round(window.innerWidth) || height !== Math.round(window.innerHeight)) {
+        sizedWidget.setSize?.(width, height);
+      }
+      expandedWidth = width;
+      expandedHeight = height;
+      userWidgetState.w = width;
+      userWidgetState.h = height;
+      if (nativeResizePersistTimer != null) window.clearTimeout(nativeResizePersistTimer);
+      nativeResizePersistTimer = window.setTimeout(() => {
+        nativeResizePersistTimer = null;
+        persistWidgetState();
+      }, 180);
+      return;
+    }
 
     // Clamp widget to viewport for both expanded and collapsed states
     const pos = widget.getPosition();
@@ -3074,7 +3131,7 @@ export function setup(ctx: SpindleFrontendContext) {
       }
 
       // Restore persisted widget position/size (desktop only)
-      if (!isMobile && payload.widgetX != null && payload.widgetY != null) {
+      if (!isMobile && !isDesktopWidgetPopout && payload.widgetX != null && payload.widgetY != null) {
         widget.moveTo(payload.widgetX, payload.widgetY);
         userWidgetState.x = payload.widgetX;
         userWidgetState.y = payload.widgetY;
@@ -3090,6 +3147,7 @@ export function setup(ctx: SpindleFrontendContext) {
 
       isCollapsed = payload.widgetCollapsed ?? false;
       updateCollapse();
+      widgetSettingsRestored = true;
       setWidgetVisible(shouldShowWidget);
     } else if (payload.type === 'hide_widget') {
       setWidgetVisible(false);
@@ -3163,6 +3221,7 @@ export function setup(ctx: SpindleFrontendContext) {
     readyGate.dispose();
     if (autoTimer) clearTimeout(autoTimer);
     if (widgetVisibilityTimer != null) window.clearTimeout(widgetVisibilityTimer);
+    if (nativeResizePersistTimer != null) window.clearTimeout(nativeResizePersistTimer);
     if (themeSyncRaf != null) cancelAnimationFrame(themeSyncRaf);
     window.removeEventListener('pointerdown', onWindowPointerDown, true);
     window.removeEventListener('popstate', syncRouteVisibility);

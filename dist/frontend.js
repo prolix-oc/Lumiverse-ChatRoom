@@ -876,6 +876,42 @@ function calculateRange({
   return { startIndex, endIndex };
 }
 
+// src/widget-layout.ts
+var DESKTOP_DEFAULT_SIZE = { width: 440, height: 620 };
+var NATIVE_MIN_WIDTH = 160;
+var NATIVE_MIN_HEIGHT = 100;
+var NATIVE_MAX_WIDTH = 1200;
+var NATIVE_MAX_HEIGHT = 900;
+function getChatRoomDefaultWidgetSize(options) {
+  if (!options.isMobile)
+    return { ...DESKTOP_DEFAULT_SIZE };
+  return {
+    width: Math.min(380, options.viewportWidth - 16),
+    height: Math.min(540, options.viewportHeight - 80)
+  };
+}
+function getChatRoomInitialWidgetSize(options) {
+  if (!options.isDesktopWidgetPopout)
+    return { ...options.fallback };
+  const width = options.requestedWidth;
+  const height = options.requestedHeight;
+  const hasValidNativeSize = width !== null && height !== null && Number.isFinite(width) && Number.isFinite(height) && width >= NATIVE_MIN_WIDTH && width <= NATIVE_MAX_WIDTH && height >= NATIVE_MIN_HEIGHT && height <= NATIVE_MAX_HEIGHT;
+  if (!hasValidNativeSize)
+    return { ...options.fallback };
+  return {
+    width: Math.round(width),
+    height: Math.round(height)
+  };
+}
+function getChatRoomWidgetResizeBounds(options) {
+  return {
+    minWidth: options.isMobile ? 260 : 320,
+    minHeight: options.isMobile ? 120 : 180,
+    maxWidth: options.isDesktopWidgetPopout ? 900 : Math.min(900, options.viewportWidth - (options.isMobile ? 8 : 32)),
+    maxHeight: options.isDesktopWidgetPopout ? NATIVE_MAX_HEIGHT : Math.min(1000, options.viewportHeight - (options.isMobile ? 32 : 64))
+  };
+}
+
 // src/frontend.ts
 var READY_MIN_VERSION = [1, 0, 6];
 function parseVersionSegment(segment) {
@@ -937,7 +973,11 @@ function createReadyGate(ctx) {
 }
 function setup(ctx) {
   const readyGate = createReadyGate(ctx);
-  const isMobile = window.innerWidth <= 768 || "ontouchstart" in window;
+  const desktopWidgetParams = new URLSearchParams(window.location.search);
+  const isDesktopWidgetPopout = "__TAURI_INTERNALS__" in window && desktopWidgetParams.has("desktopWidgetExtension");
+  const requestedDesktopWidgetWidth = Number(desktopWidgetParams.get("desktopWidgetWidth")) || null;
+  const requestedDesktopWidgetHeight = Number(desktopWidgetParams.get("desktopWidgetHeight")) || null;
+  const isMobile = !isDesktopWidgetPopout && (window.innerWidth <= 768 || ("ontouchstart" in window));
   const tab = ctx.ui.registerDrawerTab({
     id: "chatroom_settings",
     title: "Council Chatroom",
@@ -1427,25 +1467,36 @@ function setup(ctx) {
   const MOBILE_HEADER_ICON_SIZE = 36;
   const MOBILE_COLLAPSED_HEADER_ICON_SIZE = 44;
   function getDefaultWidgetSize() {
-    return {
-      width: isMobile ? Math.min(380, window.innerWidth - 16) : 440,
-      height: isMobile ? Math.min(540, window.innerHeight - 80) : 620
-    };
+    return getChatRoomDefaultWidgetSize({
+      isMobile,
+      viewportWidth: window.innerWidth,
+      viewportHeight: window.innerHeight
+    });
   }
   function getDefaultWidgetPosition() {
+    if (isDesktopWidgetPopout)
+      return { x: 0, y: 0 };
     return {
       x: isMobile ? 8 : window.innerWidth - 480,
       y: isMobile ? 40 : window.innerHeight - 660
     };
   }
   const defaultWidgetSize = getDefaultWidgetSize();
+  const initialWidgetSize = getChatRoomInitialWidgetSize({
+    isDesktopWidgetPopout,
+    requestedWidth: requestedDesktopWidgetWidth,
+    requestedHeight: requestedDesktopWidgetHeight,
+    fallback: defaultWidgetSize
+  });
   const defaultWidgetPosition = getDefaultWidgetPosition();
   function isInChatView() {
+    if (isDesktopWidgetPopout)
+      return true;
     return /^\/chat\/[^/]+/.test(window.location.pathname);
   }
   const widget = ctx.ui.createFloatWidget({
-    width: defaultWidgetSize.width,
-    height: defaultWidgetSize.height,
+    width: initialWidgetSize.width,
+    height: initialWidgetSize.height,
     initialPosition: defaultWidgetPosition,
     snapToEdge: true,
     tooltip: "Council Chatroom",
@@ -1520,9 +1571,11 @@ function setup(ctx) {
   }
   let isCollapsed = false;
   let isFullscreen = false;
+  let widgetSettingsRestored = false;
+  let nativeResizePersistTimer = null;
   let preFullscreenState = null;
-  let expandedHeight = 620;
-  let expandedWidth = 440;
+  let expandedHeight = defaultWidgetSize.height;
+  let expandedWidth = defaultWidgetSize.width;
   let unreadCount = 0;
   let lastSenderId = null;
   let userPersona = null;
@@ -1603,7 +1656,7 @@ function setup(ctx) {
       throw new Error("Copy failed");
     }
   }
-  const shell = widget.root.parentElement || widget.root;
+  const shell = isDesktopWidgetPopout ? widget.root : widget.root.parentElement || widget.root;
   function getHostWrapper() {
     let el = shell;
     while (el.parentElement && el.parentElement !== document.body) {
@@ -1611,7 +1664,7 @@ function setup(ctx) {
     }
     return el;
   }
-  const hostWrapper = getHostWrapper();
+  const hostWrapper = isDesktopWidgetPopout ? shell : getHostWrapper();
   const sizedWidget = widget;
   function syncFullscreenStateFromHost() {
     if (typeof sizedWidget.isFullscreen === "function") {
@@ -1830,14 +1883,16 @@ function setup(ctx) {
       return;
     const pos = widget.getPosition();
     const persistedHeight = isCollapsed ? expandedHeight : shell.offsetHeight;
-    userWidgetState.x = pos.x;
-    userWidgetState.y = pos.y;
+    if (!isDesktopWidgetPopout) {
+      userWidgetState.x = pos.x;
+      userWidgetState.y = pos.y;
+    }
     userWidgetState.w = expandedWidth;
     userWidgetState.h = persistedHeight;
     ctx.sendToBackend({
       type: "save_widget_state",
-      x: pos.x,
-      y: pos.y,
+      x: isDesktopWidgetPopout ? undefined : pos.x,
+      y: isDesktopWidgetPopout ? undefined : pos.y,
       w: expandedWidth,
       h: persistedHeight,
       collapsed: isCollapsed
@@ -1852,7 +1907,7 @@ function setup(ctx) {
     });
   }
   function clampWidgetToViewport() {
-    if (isFullscreen)
+    if (isFullscreen || isDesktopWidgetPopout)
       return;
     const pos = widget.getPosition();
     const rect = shell.getBoundingClientRect();
@@ -2968,10 +3023,16 @@ function setup(ctx) {
   let resizeStart = { x: 0, y: 0, w: 0, h: 0 };
   let resizeAnchor = { x: 0, y: 0 };
   let rafId = null;
-  const WIDGET_MIN_W = isMobile ? 260 : 320;
-  const WIDGET_MIN_H = isMobile ? 120 : 180;
-  const WIDGET_MAX_W = Math.min(900, window.innerWidth - (isMobile ? 8 : 32));
-  const WIDGET_MAX_H = Math.min(1000, window.innerHeight - (isMobile ? 32 : 64));
+  const widgetResizeBounds = getChatRoomWidgetResizeBounds({
+    isDesktopWidgetPopout,
+    isMobile,
+    viewportWidth: window.innerWidth,
+    viewportHeight: window.innerHeight
+  });
+  const WIDGET_MIN_W = widgetResizeBounds.minWidth;
+  const WIDGET_MIN_H = widgetResizeBounds.minHeight;
+  const WIDGET_MAX_W = widgetResizeBounds.maxWidth;
+  const WIDGET_MAX_H = widgetResizeBounds.maxHeight;
   function startResize(clientX, clientY) {
     const pos = widget.getPosition();
     resizeAnchor = { x: pos.x, y: pos.y };
@@ -3160,6 +3221,28 @@ function setup(ctx) {
     }
     if (isFullscreen)
       return;
+    if (isDesktopWidgetPopout) {
+      if (!widgetSettingsRestored || isCollapsed)
+        return;
+      const width = Math.max(WIDGET_MIN_W, Math.min(WIDGET_MAX_W, Math.round(window.innerWidth)));
+      const height = Math.max(WIDGET_MIN_H, Math.min(WIDGET_MAX_H, Math.round(window.innerHeight)));
+      shell.style.setProperty("width", width + "px", "important");
+      shell.style.setProperty("height", height + "px", "important");
+      if (width !== Math.round(window.innerWidth) || height !== Math.round(window.innerHeight)) {
+        sizedWidget.setSize?.(width, height);
+      }
+      expandedWidth = width;
+      expandedHeight = height;
+      userWidgetState.w = width;
+      userWidgetState.h = height;
+      if (nativeResizePersistTimer != null)
+        window.clearTimeout(nativeResizePersistTimer);
+      nativeResizePersistTimer = window.setTimeout(() => {
+        nativeResizePersistTimer = null;
+        persistWidgetState();
+      }, 180);
+      return;
+    }
     const pos = widget.getPosition();
     const rect = shell.getBoundingClientRect();
     let { x: nx, y: ny } = pos;
@@ -3457,7 +3540,7 @@ function setup(ctx) {
       } else {
         clearMessages();
       }
-      if (!isMobile && payload.widgetX != null && payload.widgetY != null) {
+      if (!isMobile && !isDesktopWidgetPopout && payload.widgetX != null && payload.widgetY != null) {
         widget.moveTo(payload.widgetX, payload.widgetY);
         userWidgetState.x = payload.widgetX;
         userWidgetState.y = payload.widgetY;
@@ -3472,6 +3555,7 @@ function setup(ctx) {
       }
       isCollapsed = payload.widgetCollapsed ?? false;
       updateCollapse();
+      widgetSettingsRestored = true;
       setWidgetVisible(shouldShowWidget);
     } else if (payload.type === "hide_widget") {
       setWidgetVisible(false);
@@ -3539,6 +3623,8 @@ function setup(ctx) {
       clearTimeout(autoTimer);
     if (widgetVisibilityTimer != null)
       window.clearTimeout(widgetVisibilityTimer);
+    if (nativeResizePersistTimer != null)
+      window.clearTimeout(nativeResizePersistTimer);
     if (themeSyncRaf != null)
       cancelAnimationFrame(themeSyncRaf);
     window.removeEventListener("pointerdown", onWindowPointerDown, true);
