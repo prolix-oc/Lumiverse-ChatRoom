@@ -975,6 +975,7 @@ function setup(ctx) {
   const readyGate = createReadyGate(ctx);
   const desktopWidgetParams = new URLSearchParams(window.location.search);
   const isDesktopWidgetPopout = "__TAURI_INTERNALS__" in window && desktopWidgetParams.has("desktopWidgetExtension");
+  const usesInPageWidgetDrag = !isDesktopWidgetPopout;
   const requestedDesktopWidgetWidth = Number(desktopWidgetParams.get("desktopWidgetWidth")) || null;
   const requestedDesktopWidgetHeight = Number(desktopWidgetParams.get("desktopWidgetHeight")) || null;
   const isMobile = !isDesktopWidgetPopout && (window.innerWidth <= 768 || ("ontouchstart" in window));
@@ -2166,6 +2167,8 @@ function setup(ctx) {
   let isDragging = false;
   let dragStart = { x: 0, y: 0, wx: 0, wy: 0 };
   header.addEventListener("mousedown", (e) => {
+    if (!usesInPageWidgetDrag)
+      return;
     if (usesCompactWidgetShape() && isCollapsed) {
       e.preventDefault();
       e.stopPropagation();
@@ -2196,7 +2199,7 @@ function setup(ctx) {
   const COMPACT_WIDGET_DRAG_THRESHOLD = 5;
   let compactWidgetPointer = null;
   let ignoreCompactIconClick = false;
-  const isCompactCollapsed = () => usesCompactWidgetShape() && isCollapsed && !isFullscreen;
+  const isCompactCollapsed = () => usesInPageWidgetDrag && usesCompactWidgetShape() && isCollapsed && !isFullscreen;
   const stopCompactHostDrag = (event) => {
     if (!isCompactCollapsed())
       return;
@@ -2264,7 +2267,7 @@ function setup(ctx) {
   header.addEventListener("pointerup", (event) => finishCompactWidgetPointer(event), true);
   header.addEventListener("pointercancel", (event) => finishCompactWidgetPointer(event, true), true);
   const stopHeaderIconDragInit = (event) => {
-    if (!usesCompactWidgetShape())
+    if (!usesInPageWidgetDrag || !usesCompactWidgetShape())
       return;
     event.stopPropagation();
   };

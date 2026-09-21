@@ -73,6 +73,10 @@ export function setup(ctx: SpindleFrontendContext) {
   const desktopWidgetParams = new URLSearchParams(window.location.search);
   const isDesktopWidgetPopout =
     '__TAURI_INTERNALS__' in window && desktopWidgetParams.has('desktopWidgetExtension');
+  // Desktop pop-outs are moved by the native drag region the host attaches to
+  // widget.root. The in-page float widget has no native window, so it keeps
+  // using the header's pointer-driven placement logic below.
+  const usesInPageWidgetDrag = !isDesktopWidgetPopout;
   const requestedDesktopWidgetWidth = Number(desktopWidgetParams.get('desktopWidgetWidth')) || null;
   const requestedDesktopWidgetHeight = Number(desktopWidgetParams.get('desktopWidgetHeight')) || null;
   const isMobile =
@@ -1526,6 +1530,7 @@ export function setup(ctx: SpindleFrontendContext) {
   let isDragging = false;
   let dragStart = { x: 0, y: 0, wx: 0, wy: 0 };
   header.addEventListener('mousedown', (e) => {
+    if (!usesInPageWidgetDrag) return;
     if (usesCompactWidgetShape() && isCollapsed) {
       e.preventDefault();
       e.stopPropagation();
@@ -1566,7 +1571,8 @@ export function setup(ctx: SpindleFrontendContext) {
   } | null = null;
   let ignoreCompactIconClick = false;
 
-  const isCompactCollapsed = () => usesCompactWidgetShape() && isCollapsed && !isFullscreen;
+  const isCompactCollapsed = () =>
+    usesInPageWidgetDrag && usesCompactWidgetShape() && isCollapsed && !isFullscreen;
 
   const stopCompactHostDrag = (event: Event) => {
     if (!isCompactCollapsed()) return;
@@ -1637,7 +1643,7 @@ export function setup(ctx: SpindleFrontendContext) {
   header.addEventListener('pointercancel', (event) => finishCompactWidgetPointer(event, true), true);
 
   const stopHeaderIconDragInit = (event: Event) => {
-    if (!usesCompactWidgetShape()) return;
+    if (!usesInPageWidgetDrag || !usesCompactWidgetShape()) return;
     event.stopPropagation();
   };
   headerIcon.addEventListener('mousedown', stopHeaderIconDragInit, false);
