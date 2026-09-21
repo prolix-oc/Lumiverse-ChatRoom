@@ -1666,8 +1666,35 @@ export function setup(ctx: SpindleFrontendContext) {
   headerIcon.addEventListener('mousedown', stopHeaderIconDragInit, false);
   headerIcon.addEventListener('pointerdown', stopHeaderIconDragInit, false);
   headerIcon.addEventListener('touchstart', stopHeaderIconDragInit, { passive: true, capture: false });
+
+  // Tauri starts a native window drag from mousedown, then still dispatches a
+  // DOM click after the mouse is released. Track screen-space movement so a
+  // completed native drag does not also activate the collapsed icon.
+  const NATIVE_COLLAPSED_DRAG_THRESHOLD = 5;
+  let nativeCollapsedDragStart: { x: number; y: number } | null = null;
+  const isNativeCompactCollapsed = () =>
+    isDesktopWidgetPopout && usesCompactWidgetShape() && isCollapsed && !isFullscreen;
+
+  headerIcon.addEventListener('mousedown', (event) => {
+    if (event.button !== 0 || !isNativeCompactCollapsed()) {
+      nativeCollapsedDragStart = null;
+      return;
+    }
+    nativeCollapsedDragStart = { x: event.screenX, y: event.screenY };
+  });
+
   headerIcon.addEventListener('click', (event) => {
     if (!usesCompactWidgetShape()) return;
+    const dragStart = nativeCollapsedDragStart;
+    nativeCollapsedDragStart = null;
+    if (
+      dragStart &&
+      Math.hypot(event.screenX - dragStart.x, event.screenY - dragStart.y) >= NATIVE_COLLAPSED_DRAG_THRESHOLD
+    ) {
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
     event.preventDefault();
     event.stopPropagation();
     if (ignoreCompactIconClick) return;
