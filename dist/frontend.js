@@ -2158,12 +2158,18 @@ function setup(ctx) {
       headerIcon.setAttribute("aria-expanded", String(!isCollapsed));
       headerIcon.setAttribute("role", "button");
       headerIcon.tabIndex = 0;
+      if (isDesktopWidgetPopout && iconOnlyCollapsed) {
+        headerIcon.setAttribute("data-tauri-drag-region", "deep");
+      } else {
+        headerIcon.removeAttribute("data-tauri-drag-region");
+      }
     } else {
       headerIcon.removeAttribute("title");
       headerIcon.removeAttribute("aria-label");
       headerIcon.removeAttribute("aria-expanded");
       headerIcon.removeAttribute("role");
       headerIcon.removeAttribute("tabindex");
+      headerIcon.removeAttribute("data-tauri-drag-region");
     }
   }
   syncHeaderChrome();

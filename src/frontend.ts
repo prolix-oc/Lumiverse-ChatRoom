@@ -1522,12 +1522,22 @@ export function setup(ctx: SpindleFrontendContext) {
       headerIcon.setAttribute('aria-expanded', String(!isCollapsed));
       headerIcon.setAttribute('role', 'button');
       headerIcon.tabIndex = 0;
+
+      // Tauri deliberately stops walking to an ancestor drag region when a
+      // target is a keyboard-accessible control. The compact collapsed widget
+      // is just that icon, so it must opt into native dragging itself.
+      if (isDesktopWidgetPopout && iconOnlyCollapsed) {
+        headerIcon.setAttribute('data-tauri-drag-region', 'deep');
+      } else {
+        headerIcon.removeAttribute('data-tauri-drag-region');
+      }
     } else {
       headerIcon.removeAttribute('title');
       headerIcon.removeAttribute('aria-label');
       headerIcon.removeAttribute('aria-expanded');
       headerIcon.removeAttribute('role');
       headerIcon.removeAttribute('tabindex');
+      headerIcon.removeAttribute('data-tauri-drag-region');
     }
   }
 
