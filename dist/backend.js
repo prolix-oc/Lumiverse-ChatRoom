@@ -520,24 +520,24 @@ MemberName (Username): The message content
         isUser: uiMsg.isUser
       }, resolvedUserId);
     };
-    const consumeText = async (text, state2, abortForJunk) => {
+    const consumeText = async (text, state, abortForJunk) => {
       if (!text)
         return;
-      state2.fullText += text;
-      const junkReason = describeJunkLoopSuffix(state2.fullText);
+      state.fullText += text;
+      const junkReason = describeJunkLoopSuffix(state.fullText);
       if (junkReason) {
         abortForJunk(junkReason);
       }
-      state2.streamBuffer += text;
-      let separatorIndex = state2.streamBuffer.indexOf("---");
+      state.streamBuffer += text;
+      let separatorIndex = state.streamBuffer.indexOf("---");
       while (separatorIndex !== -1) {
-        const completedChunk = state2.streamBuffer.slice(0, separatorIndex);
-        state2.streamBuffer = state2.streamBuffer.slice(separatorIndex + 3);
+        const completedChunk = state.streamBuffer.slice(0, separatorIndex);
+        state.streamBuffer = state.streamBuffer.slice(separatorIndex + 3);
         setTypingSpeaker(null);
         await flushChunk(completedChunk);
-        separatorIndex = state2.streamBuffer.indexOf("---");
+        separatorIndex = state.streamBuffer.indexOf("---");
       }
-      setTypingSpeaker(detectTypingSpeaker(state2.streamBuffer));
+      setTypingSpeaker(detectTypingSpeaker(state.streamBuffer));
     };
     let junkRestartCount = 0;
     while (true) {

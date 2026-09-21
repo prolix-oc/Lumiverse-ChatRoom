@@ -1,5 +1,5 @@
 {
-  "version": "1.2.0",
+  "version": "1.2.1",
   "name": "Live Internet Shitposting Chatroom",
   "identifier": "lumiverse_chatroom",
   "author": "Prolix OCs",
@@ -9,5 +9,6 @@
   "permissions": ["generation", "ui_panels", "chats", "chat_mutation", "personas", "characters"],
   "entry_backend": "dist/backend.js",
   "entry_frontend": "dist/frontend.js",
+  "entry_frontend_widget": "dist/widget.js",
   "minimum_lumiverse_version": "0.9.4"
 }

@@ -3393,7 +3393,7 @@ function setup(ctx) {
     }
   }
   function reconcileUserMessage(clientMessageId, name, username, content, avatarUrl) {
-    const index = allMessages.findIndex((msg2) => msg2.isUser && msg2.clientMessageId === clientMessageId);
+    const index = allMessages.findIndex((msg) => msg.isUser && msg.clientMessageId === clientMessageId);
     if (index === -1) {
       appendMessage(name, username, content, avatarUrl, true, clientMessageId);
       return;
