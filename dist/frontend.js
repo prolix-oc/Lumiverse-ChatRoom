@@ -2110,6 +2110,9 @@ function setup(ctx) {
   headerActions.appendChild(hideBtn);
   header.appendChild(headerLeft);
   header.appendChild(headerActions);
+  if (isDesktopWidgetPopout) {
+    header.setAttribute("data-tauri-drag-region", "deep");
+  }
   widget.root.appendChild(header);
   function syncHeaderChrome() {
     const compactShape = usesCompactWidgetShape();

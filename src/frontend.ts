@@ -1455,6 +1455,13 @@ export function setup(ctx: SpindleFrontendContext) {
   headerActions.appendChild(hideBtn);
   header.appendChild(headerLeft);
   header.appendChild(headerActions);
+  if (isDesktopWidgetPopout) {
+    // ChatRoom deliberately reserves its message body for scrolling and text
+    // interaction. Give Tauri an explicit, always-present drag region on the
+    // header instead of relying on the native host's root-level marker, whose
+    // event path is intentionally stopped by that interactive body.
+    header.setAttribute('data-tauri-drag-region', 'deep');
+  }
   widget.root.appendChild(header);
 
   function syncHeaderChrome() {
